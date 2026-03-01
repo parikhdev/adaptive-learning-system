@@ -51,6 +51,6 @@ app.include_router(recommend_router)
 app.include_router(explain_router)
 
 
-@app.get("/health", tags=["Health"])
+@app.api_route("/health", methods=["GET", "HEAD"], tags=["Health"])
 def health():
-    return {"status": "ok", "phase": 5}
+    return {"status": "ok"}
