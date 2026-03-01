@@ -1,0 +1,35 @@
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+.next/
+npm-debug.log*
+
+# Data files — large, not needed on GitHub
+data_pipeline/data/
+*.log
+embeddings_upload.log
+upload.log
+
+# ML models — too large for GitHub
+ml_training/
+*.bin
+*.pt
+*.onnx
+
+# OS
+.DS_Store
+Thumbs.db
