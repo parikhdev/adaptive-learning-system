@@ -87,7 +87,7 @@ def get_answered_question_ids(session_id: str) -> list[int]:
     try:
         conn = get_connection()
         with conn.cursor() as cur:
-            cur.execute(sql, (session_id,))
+            cur.execute("SELECT question_id FROM student_responses WHERE session_id = %s", (session_id,))
             rows = cur.fetchall()
             return [row[0] for row in rows]
     except Exception as e:
@@ -118,7 +118,7 @@ def get_session_context(session_id: str) -> dict[str, Any] | None:
     try:
         conn = get_connection()
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, (session_id,))
+            cur.execute("SELECT question_id FROM student_responses WHERE session_id = %s", (session_id,))
             row = cur.fetchone()
             return dict(row) if row else None
     except Exception as e:
