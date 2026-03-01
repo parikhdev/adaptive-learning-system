@@ -13,18 +13,6 @@ logger = logging.getLogger(__name__)
 
 @router.post("/", response_model=ExplainResponse)
 async def explain_answer(request: ExplainRequest) -> ExplainResponse:
-    """
-    POST /explain
-
-    Triggered when a student answers a question incorrectly.
-    Returns a concise, concept-focused explanation generated via RAG + Groq.
-
-    Flow:
-    1. Fetch full question text from DB using question_id
-    2. Run RAG pipeline (retrieve → prompt → generate)
-    3. Return structured explanation
-    """
-
     # Step 1: Resolve question text from ID
     question_text = fetch_question_text(request.question_id)
 
@@ -33,7 +21,6 @@ async def explain_answer(request: ExplainRequest) -> ExplainResponse:
             status_code=404,
             detail=f"Question {request.question_id} not found."
         )
-
     # Step 2: Run RAG pipeline
     try:
         result = await run_rag_pipeline(
@@ -51,7 +38,6 @@ async def explain_answer(request: ExplainRequest) -> ExplainResponse:
             status_code=500,
             detail="Explanation generation failed. Please try again."
         )
-
     # Step 3: Return structured response
     return ExplainResponse(
         question_id=request.question_id,

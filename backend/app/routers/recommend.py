@@ -34,7 +34,7 @@ def recommend_question(request: RecommendRequest) -> RecommendResponse:
     6. Return best (most similar, correct difficulty) question
     """
 
-    # ── Step 1: Session context ──────────────────────────────────────────
+    # Step 1: Session context 
     context = get_session_context(request.session_id)
 
     if context is None:
@@ -46,7 +46,7 @@ def recommend_question(request: RecommendRequest) -> RecommendResponse:
     questions_answered: int = context.get("total_questions", 0)
     last_difficulty: str | None = context.get("last_difficulty")
 
-    # ── Step 2: Progress-based difficulty ────────────────────────────────
+    # Step 2: Progress-based difficulty 
     target_difficulty = next_difficulty(
         current_level=last_difficulty,        # type: ignore[arg-type]
         questions_answered=questions_answered,
@@ -58,20 +58,20 @@ def recommend_question(request: RecommendRequest) -> RecommendResponse:
         f"→ target_difficulty={target_difficulty}"
     )
 
-    # ── Step 3: Build query text ──────────────────────────────────────────
+    # Step 3: Build query text 
     embedder = get_embedder()
     query_text = embedder.build_query(
         subject=request.subject,
         topic=request.topic,
     )
 
-    # ── Step 4: Embed ─────────────────────────────────────────────────────
+    # Step 4: Embed 
     query_vector = embedder.encode(query_text)
 
-    # ── Step 5: Fetch answered IDs (exclusion set) ────────────────────────
+    # Step 5: Fetch answered IDs (exclusion set) 
     excluded_ids = get_answered_question_ids(request.session_id)
 
-    # ── Step 6: Vector search ──────────────────────────────────────────────
+    # Step 6: Vector search 
     candidates = cosine_search_questions(
         query_vector=query_vector,
         subject=request.subject,

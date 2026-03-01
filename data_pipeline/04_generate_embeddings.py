@@ -1,88 +1,17 @@
 """
-=============================================================================
-ADAPTIVE LEARNING SYSTEM — DATA PIPELINE
-Script: 04_generate_embeddings.py
-Phase:  2 — Dataset Preprocessing (Step 4 of 5)
-Author: Adaptive_Learning_System Architect
-
 PURPOSE:
     Generate 384-dimensional dense vector embeddings for all 121,557
     question texts using BAAI/bge-small-en-v1.5, and save them in a
     binary format optimized for Supabase pgvector ingestion.
-
-MODEL: BAAI/bge-small-en-v1.5
-    Parameters:   33M
-    Output dim:   384
-    Max tokens:   512
-    Encoding:     NO instruction prefix for passage/document encoding
-                  (BGE model card specifies prefix only for query encoding)
-    normalize:    True → unit vectors → direct cosine similarity in pgvector
-
-STORAGE ARCHITECTURE — TWO-FILE OUTPUT:
-    ┌─────────────────────────────────────────────────────────────┐
-    │  embeddings_matrix.npy                                      │
-    │  Shape: (121557, 384), dtype: float32                       │
-    │  Row i = embedding for the question at row_id i             │
-    │  Size:  ~178 MB binary (vs ~923 MB as CSV string column)    │
-    └─────────────────────────────────────────────────────────────┘
-    ┌─────────────────────────────────────────────────────────────┐
-    │  embeddings_metadata.csv                                     │
-    │  Columns: row_id, Subject, topic, subtopic,                 │
-    │           difficulty_level, difficulty_score, estimated_time │
-    │  Purpose: Supabase row construction in 05_upload_supabase.py│
-    │  Invariant: metadata row i has row_id == i (guaranteed)     │
-    └─────────────────────────────────────────────────────────────┘
-
-    05_upload_supabase.py reads both files together:
-        embedding = matrix[i]  ←→  metadata = csv.iloc[i]
-        pgvector_str = '[' + ','.join(f'{v:.8f}' for v in embedding) + ']'
-
-MEMORY STRATEGY:
-    - Pre-allocate full matrix ONCE: np.zeros((121557, 384), float32) = 178MB
-    - Fill batch slices in-place: matrix[start:end] = batch_embeddings
-    - No Python list appends, no concatenation overhead
-    - Total RAM: 178MB matrix + 130MB model + 50MB overhead ≈ 360MB
-
-CHECKPOINT / RESUME:
-    - Every CHECKPOINT_EVERY batches: flush matrix to disk + save checkpoint.json
-    - On next run: detect checkpoint → load partial matrix → resume from last batch
-    - Zero re-computation of already-embedded rows
-
-PERFORMANCE EXPECTATIONS:
-    CPU (M4 MacBook Air):  ~350  rows/sec  → 121k rows ≈ 6 min
-    MPS (M4 MacBook Air):  ~2000–4000 rows/sec  → 121k rows ≈ 30–60 sec
-    CUDA (NVIDIA GPU):     ~3000–6000 rows/sec  → 121k rows ≈ 20–40 sec
-
-    The script auto-detects your device. On an M4 Mac, MPS is used
-    automatically with batch_size=512. No flags needed — just run it.
-
 INPUTS:
     data/processed/topics_extracted.csv    (from 03_extract_topics.py)
 
 OUTPUTS:
-    data/processed/embeddings_matrix.npy       — float32 matrix (178MB)
-    data/processed/embeddings_metadata.csv     — metadata per row
-    data/processed/checkpoint.json             — resume state (deleted on success)
-    data/reports/embeddings_report.json        — full audit report
-
-USAGE:
-    cd data_pipeline/
-
-    # Standard — auto-detects MPS on Apple Silicon (recommended)
-    python 04_generate_embeddings.py
-
-    # Explicit device selection
-    python 04_generate_embeddings.py --device mps    # force Apple GPU
-    python 04_generate_embeddings.py --device cpu    # force CPU
-
-    # Override batch size (only if hitting memory errors)
-    python 04_generate_embeddings.py --batch_size 256
-
-    # Restart from scratch (ignore existing checkpoint)
-    python 04_generate_embeddings.py --fresh
-=============================================================================
+    data/processed/embeddings_matrix.npy  — float32 matrix (178MB)
+    data/processed/embeddings_metadata.csv — metadata per row
+    data/processed/checkpoint.json  — resume state (deleted on success)
+    data/reports/embeddings_report.json — full audit report
 """
-
 import os
 import json
 import math
@@ -92,58 +21,26 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-
 import numpy as np
 import pandas as pd
-
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
 
 MODEL_NAME          = "BAAI/bge-small-en-v1.5"
 EMBEDDING_DIM       = 384
 EMBEDDING_DTYPE     = np.float32
-
-# Batch sizes tuned per device + dataset.
-#
-# WHY MPS=64 NOT 512:
-#   Our dataset has questions up to 4,317 chars (~860 tokens).
-#   BERT attention memory = O(batch × seq_len²).
-#   batch=512 × long sequences → tried to allocate 6GB → OOM on M4 Air.
-#   batch=64  × same sequences → ~750MB peak MPS allocation → safe.
-#   MPS is still 3-5x faster than CPU despite the smaller batch,
-#   because the bottleneck shifts from memory to compute throughput.
-#
-# BENCHMARK NOTE:
-#   The 32-sample warmup used identical short texts (56 tokens each).
-#   Real data avg=232 chars, max=4317 chars → very different memory profile.
-#   Always size batches for your WORST CASE sequence length, not average.
 BATCH_SIZE_BY_DEVICE: dict = {
     "cpu":  128,
-    "mps":  64,    # M1/M2/M3/M4 — safe for long sequences up to 512 tokens
-    "cuda": 256,   # NVIDIA GPU (adjust down if VRAM < 8GB)
+    "mps":  64,    #safe for long sequences up to 512 tokens
+    "cuda": 256,   
 }
-
-# Flush matrix to disk every N batches (crash recovery).
-# MPS at batch=64:  30 batches = 1,920 rows per checkpoint flush.
-# CPU at batch=128: 30 batches = 3,840 rows per checkpoint flush.
 DEFAULT_CHECKPOINT_EVERY = 30
-
-# Norm validation tolerance
-# normalize_embeddings=True should produce norms of exactly 1.0
-# Allow small floating-point deviation
 NORM_TOLERANCE_LOW  = 0.98
 NORM_TOLERANCE_HIGH = 1.02
 
-# How many sample norms to log in the report
+# No. sample norms to log in the report
 NORM_SAMPLE_SIZE    = 1000
 
 # Progress log interval (rows)
 LOG_EVERY_ROWS      = 5_000
-
-# =============================================================================
-# LOGGING
-# =============================================================================
 
 logging.basicConfig(
     level=logging.INFO,
@@ -153,15 +50,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
-# PATH RESOLUTION
-# =============================================================================
 
+# PATH RESOLUTION
 def resolve_paths(input_csv: str) -> dict:
-    """
-    Resolve all input and output paths relative to the script's directory.
-    Creates output directories if absent.
-    """
     script_dir = Path(__file__).parent
     paths = {
         "input":      Path(input_csv) if os.path.isabs(input_csv)
@@ -176,15 +67,9 @@ def resolve_paths(input_csv: str) -> dict:
     return paths
 
 
-# =============================================================================
-# CHECKPOINT MANAGEMENT
-# =============================================================================
 
+# CHECKPOINT MANAGEMENT
 def load_checkpoint(checkpoint_path: Path) -> Optional[dict]:
-    """
-    Load checkpoint state if it exists and is valid.
-    Returns None if no valid checkpoint found.
-    """
     if not checkpoint_path.exists():
         return None
     try:
@@ -202,7 +87,6 @@ def load_checkpoint(checkpoint_path: Path) -> Optional[dict]:
     except (json.JSONDecodeError, KeyError) as e:
         logger.warning(f"Checkpoint file unreadable: {e}. Starting fresh.")
         return None
-
 
 def save_checkpoint(
     checkpoint_path: Path,
@@ -237,28 +121,8 @@ def delete_checkpoint(checkpoint_path: Path) -> None:
         checkpoint_path.unlink()
         logger.info("Checkpoint deleted (pipeline completed successfully).")
 
-
-# =============================================================================
 # DEVICE DETECTION
-# =============================================================================
-
 def detect_device() -> str:
-    """
-    Detect the best available compute device in priority order:
-        1. MPS  — Apple Silicon GPU (M1/M2/M3/M4 Mac)
-        2. CUDA — NVIDIA GPU (workstation / cloud)
-        3. CPU  — universal fallback
-
-    MPS notes for sentence-transformers:
-        - Supported from sentence-transformers >= 2.3.0
-        - PyTorch >= 2.0.0 required for stable MPS support
-        - The model's .encode() call handles MPS tensor movement internally
-          when device='mps' is passed to SentenceTransformer()
-        - float32 is used (MPS has limited float16 support for this model)
-
-    Returns:
-        Device string: 'mps', 'cuda', or 'cpu'
-    """
     try:
         import torch
         if torch.backends.mps.is_available() and torch.backends.mps.is_built():
@@ -287,36 +151,8 @@ def get_device_description(device: str) -> str:
         pass
     return "CPU (no GPU acceleration)"
 
-
-# =============================================================================
 # MODEL LOADING
-# =============================================================================
-
 def load_model(device: str):
-    """
-    Load BAAI/bge-small-en-v1.5 onto the specified device.
-
-    Args:
-        device: 'mps', 'cuda', or 'cpu' — from detect_device()
-
-    First-run behavior:
-        Downloads model to ~/.cache/huggingface/ (~130MB).
-        Subsequent runs load from local cache in ~2-4 seconds.
-
-    BGE encoding contract:
-        - normalize_embeddings=True  → unit vectors → direct cosine similarity
-        - No instruction prefix      → passage/document encoding mode
-        - Instruction prefix is for query encoding in RAG (Phase 3), NOT here
-
-    MPS-specific behavior:
-        - SentenceTransformer(device='mps') moves all model weights to GPU
-        - .encode() automatically handles MPS tensor operations
-        - Output is moved back to CPU numpy array via convert_to_numpy=True
-        - No manual .to(device) calls needed — ST handles it internally
-
-    Returns:
-        (model, device) — loaded SentenceTransformer and confirmed device string
-    """
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError:
@@ -340,20 +176,12 @@ def load_model(device: str):
     logger.info(f"  Output dimension:    {EMBEDDING_DIM}")
     logger.info(f"  Active device:       {device.upper()}")
 
-    # ── GPU warmup pass ────────────────────────────────────────────────────
-    # On MPS, the first encode() call triggers Metal shader compilation.
-    # Pay this one-time cost upfront so it doesn't skew the benchmark.
     if device in ("mps", "cuda"):
         logger.info(f"  Warming up {device.upper()} (Metal shader compilation)...")
         warmup_texts = ["warmup sentence for Metal shader compilation"] * 8
         _ = model.encode(warmup_texts, batch_size=8,
                          normalize_embeddings=True, show_progress_bar=False)
         logger.info(f"  Warmup complete.")
-
-    # ── Realistic benchmark using actual batch size + real-world text lengths ──
-    # CRITICAL: benchmark MUST use the same batch_size as production and
-    # simulate the real dataset's length distribution (avg 232 chars, max 4317).
-    # Using short identical texts (as before) gave misleadingly high throughput.
     actual_batch = BATCH_SIZE_BY_DEVICE.get(device, 64)
     benchmark_texts = (
         # Mix of short, medium, and long texts — reflects real dataset
@@ -378,9 +206,6 @@ def load_model(device: str):
     logger.info(f"  Benchmark ({actual_batch} samples, realistic lengths): "
                 f"{bench_elapsed*1000:.0f}ms → {bench_throughput:.0f} rows/sec")
 
-    # MPS on M4 with batch=64 and real text lengths: expect 300-800 rows/sec
-    # CPU baseline with batch=128: ~200-400 rows/sec
-    # If MPS < CPU baseline, flag it — but don't abort, let it run
     if device == "mps":
         eta_min = 121_557 / bench_throughput / 60
         logger.info(f"  Estimated full run: ~{eta_min:.1f} min at current throughput")
@@ -392,37 +217,8 @@ def load_model(device: str):
 
     return model, device
 
-
-# =============================================================================
 # TEXT PREPROCESSING FOR EMBEDDING
-# =============================================================================
-
 def prepare_text_for_embedding(text: str) -> str:
-    """
-    Minimal text preparation before embedding.
-
-    DESIGN DECISION — What we do and why:
-
-    DO: Strip leading/trailing whitespace
-        Reason: Clean input → cleaner token attention
-
-    DO: Replace excessive newlines with a single space
-        Reason: BGE tokenizer treats \\n as a token. MCQ options separated
-        by \\n (e.g. "A. Afforestation\\nB. Selective grazing") should be
-        presented as a continuous sequence, not fragmented paragraphs.
-        The semantic meaning is in the question + options as a unit.
-
-    DO NOT: Remove LaTeX markup (\\frac, \\int, etc.)
-        Reason: The tokenizer handles these as word-piece tokens.
-        They carry semantic signal — a question with \\frac is fundamentally
-        different from one without. Removing them would destroy embedding
-        quality for Physics/Maths questions.
-
-    DO NOT: Truncate to N words before encoding
-        Reason: Model handles truncation internally at 512 tokens.
-        Our avg question length is ~42 words → well within limit.
-        Max question is ~700 chars (~140 words) → still safe.
-    """
     if not isinstance(text, str):
         return ""
     text = text.strip()
@@ -434,11 +230,7 @@ def prepare_text_for_embedding(text: str) -> str:
     text = re.sub(r' {2,}', ' ', text)
     return text
 
-
-# =============================================================================
 # BATCH EMBEDDING ENGINE
-# =============================================================================
-
 def generate_embeddings(
     texts: list[str],
     model,
@@ -451,24 +243,6 @@ def generate_embeddings(
     started_at: str,
     total_rows: int,
 ) -> tuple[np.ndarray, dict]:
-    """
-    Generate embeddings for all texts and fill the pre-allocated matrix.
-
-    Args:
-        texts:            List of preprocessed question texts (len = total_rows)
-        model:            Loaded SentenceTransformer model
-        batch_size:       Rows per encode() call
-        matrix:           Pre-allocated np.zeros((total_rows, 384), float32)
-        start_batch:      First batch to process (0 if fresh, N+1 if resuming)
-        total_batches:    Total number of batches (ceil(total_rows / batch_size))
-        checkpoint_path:  Path to checkpoint.json
-        checkpoint_every: Flush to disk every N batches
-        started_at:       ISO timestamp of pipeline start
-        total_rows:       Total number of rows
-
-    Returns:
-        (filled_matrix, timing_stats)
-    """
     timing_stats = {
         "batch_times_ms": [],
         "rows_processed": 0,
@@ -496,7 +270,7 @@ def generate_embeddings(
 
         t_batch_elapsed_ms = (time.perf_counter() - t_batch_start) * 1000
 
-        # ── Write to pre-allocated matrix ──────────────────────────────
+        # Write to pre-allocated matrix 
         matrix[batch_start:batch_end] = batch_embeddings.astype(EMBEDDING_DTYPE)
 
         timing_stats["batch_times_ms"].append(t_batch_elapsed_ms)
@@ -505,7 +279,7 @@ def generate_embeddings(
 
         rows_done = batch_end
 
-        # ── Progress logging ───────────────────────────────────────────
+        # Progress logging 
         if rows_done - last_log_row >= LOG_EVERY_ROWS or batch_idx == total_batches - 1:
             pct = rows_done / total_rows * 100
             ms_per_row = t_batch_elapsed_ms / current_batch_size
@@ -520,7 +294,7 @@ def generate_embeddings(
             )
             last_log_row = rows_done
 
-        # ── Checkpoint flush ───────────────────────────────────────────
+        # Checkpoint flush 
         if (batch_idx + 1) % checkpoint_every == 0 or batch_idx == total_batches - 1:
             np.save(checkpoint_path.parent / "embeddings_matrix.npy", matrix)
             save_checkpoint(
@@ -535,25 +309,8 @@ def generate_embeddings(
 
     return matrix, timing_stats
 
-
-# =============================================================================
 # VALIDATION
-# =============================================================================
-
 def validate_embeddings(matrix: np.ndarray, total_rows: int) -> dict:
-    """
-    Run post-generation validation checks.
-
-    Checks:
-        1. Shape: must be (total_rows, 384)
-        2. dtype: must be float32
-        3. No NaN values anywhere
-        4. No all-zero rows (embedding failure indicator)
-        5. Norms: sample NORM_SAMPLE_SIZE rows, all should be ~1.0
-
-    Returns:
-        validation_result dict with pass/fail for each check
-    """
     logger.info("Running post-generation validation...")
     result = {"all_passed": True, "checks": {}}
 
@@ -618,28 +375,8 @@ def validate_embeddings(matrix: np.ndarray, total_rows: int) -> dict:
 
     return result
 
-
-# =============================================================================
 # METADATA CSV GENERATION
-# =============================================================================
-
 def save_metadata_csv(df: pd.DataFrame, path: Path) -> None:
-    """
-    Save the metadata CSV alongside the npy matrix.
-
-    Columns saved (all upstream pipeline columns except 'eng'):
-        row_id, Subject, difficulty_level, difficulty_score,
-        estimated_time, question_type, has_latex, raw_formula_count,
-        raw_symbol_count, score_length, score_formula, score_symbol,
-        score_type, score_keyword, topic, subtopic
-
-    The 'eng' column is intentionally excluded from this file — it is
-    already in topics_extracted.csv. This keeps the metadata CSV lean.
-
-    CRITICAL INVARIANT: df must already be sorted by row_id (ascending)
-    so that metadata row i corresponds to matrix row i.
-    This invariant is established when we sort by row_id after loading.
-    """
     metadata_cols = [
         "row_id", "Subject", "difficulty_level", "difficulty_score",
         "estimated_time", "question_type", "has_latex",
@@ -652,11 +389,7 @@ def save_metadata_csv(df: pd.DataFrame, path: Path) -> None:
     df[available].to_csv(path, index=False, encoding="utf-8")
     logger.info(f"Metadata CSV saved: {len(df):,} rows → {path}")
 
-
-# =============================================================================
 # REPORT GENERATION
-# =============================================================================
-
 def generate_report(
     df: pd.DataFrame,
     matrix: np.ndarray,
@@ -736,11 +469,7 @@ def generate_report(
     logger.info(f"Report saved: {paths['report']}")
     return report
 
-
-# =============================================================================
 # PIPELINE ORCHESTRATOR
-# =============================================================================
-
 def run_embedding_pipeline(
     input_csv:        str,
     batch_size:       Optional[int] = None,   # None = auto-select from BATCH_SIZE_BY_DEVICE
@@ -748,32 +477,15 @@ def run_embedding_pipeline(
     fresh_start:      bool = False,
     device:           Optional[str] = None,   # None = auto-detect
 ) -> dict:
-    """
-    Main pipeline function. Steps:
-        1.  Detect compute device (MPS / CUDA / CPU)
-        2.  Auto-select batch size for detected device
-        3.  Load dataset
-        4.  Checkpoint resume check
-        5.  Pre-allocate embedding matrix
-        6.  Load model onto device
-        7.  GPU warmup + benchmark
-        8.  Prepare texts
-        9.  Batch embedding loop with checkpoint flushes
-        10. Validate embeddings
-        11. Save metadata CSV
-        12. Generate report
-        13. Delete checkpoint
-
-    Returns the report dict.
-    """
+    
     start_time = datetime.now()
     started_at = start_time.isoformat()
 
-    # ── Step 1: Device detection ───────────────────────────────────────────
+    # Step 1: Device detection 
     if device is None:
         device = detect_device()
 
-    # ── Step 2: Auto batch size ────────────────────────────────────────────
+    # Step 2: Auto batch size 
     if batch_size is None:
         batch_size = BATCH_SIZE_BY_DEVICE.get(device, 128)
         batch_size_source = f"auto ({device.upper()} default)"
@@ -793,7 +505,7 @@ def run_embedding_pipeline(
 
     paths = resolve_paths(input_csv)
 
-    # ── Step 3: Load dataset ───────────────────────────────────────────────
+    # Step 3: Load dataset
     logger.info(f"Loading dataset: {paths['input']}")
     df = pd.read_csv(paths["input"], dtype={"row_id": int})
     logger.info(f"Loaded {len(df):,} rows, {len(df.columns)} columns")
@@ -810,7 +522,7 @@ def run_embedding_pipeline(
     total_rows    = len(df)
     total_batches = math.ceil(total_rows / batch_size)
 
-    # ── Step 4: Checkpoint resume check ───────────────────────────────────
+    # Step 4: Checkpoint resume check
     resumed_from_batch = None
     start_batch        = 0
 
@@ -838,7 +550,7 @@ def run_embedding_pipeline(
             logger.warning("Checkpoint found but matrix file missing. Starting fresh.")
             checkpoint = None
 
-    # ── Step 5: Pre-allocate embedding matrix ──────────────────────────────
+    # Step 5: Pre-allocate embedding matrix 
     matrix_size_mb = (total_rows * EMBEDDING_DIM * 4) / 1024 / 1024
     logger.info(f"Pre-allocating matrix: "
                 f"({total_rows:,} × {EMBEDDING_DIM}) float32 = {matrix_size_mb:.1f} MB")
@@ -855,10 +567,10 @@ def run_embedding_pipeline(
         matrix = np.zeros((total_rows, EMBEDDING_DIM), dtype=EMBEDDING_DTYPE)
         logger.info("Zero matrix allocated. Starting from batch 0.")
 
-    # ── Step 6 + 7: Load model, warmup, benchmark ─────────────────────────
+    # Step 6 + 7: Load model, warmup, benchmark 
     model, device = load_model(device)
 
-    # ── Step 8: Prepare texts ──────────────────────────────────────────────
+    # Step 8: Prepare texts
     logger.info("Preparing texts...")
     texts = [prepare_text_for_embedding(t) for t in df["eng"].tolist()]
 
@@ -870,7 +582,7 @@ def run_embedding_pipeline(
     max_len = max(len(t) for t in texts)
     logger.info(f"Texts ready. Avg: {avg_len:.0f} chars, Max: {max_len} chars")
 
-    # ── Step 9: Generate embeddings ────────────────────────────────────────
+    # Step 9: Generate embeddings
     logger.info(f"Starting embedding: {total_batches} total batches, "
                 f"first={start_batch}, last={total_batches-1}")
     logger.info("-" * 70)
@@ -891,19 +603,19 @@ def run_embedding_pipeline(
     logger.info("-" * 70)
     logger.info("Embedding generation complete.")
 
-    # ── Step 10: Save final matrix ─────────────────────────────────────────
+    # Step 10: Save final matrix 
     logger.info(f"Saving matrix → {paths['matrix']}")
     np.save(paths["matrix"], matrix)
     logger.info(f"Saved: shape={matrix.shape}, dtype={matrix.dtype}, "
                 f"size={matrix.nbytes/1024/1024:.1f} MB")
 
-    # ── Step 11: Validate ──────────────────────────────────────────────────
+    # Step 11: Validate
     validation = validate_embeddings(matrix, total_rows)
 
-    # ── Step 12: Save metadata CSV ─────────────────────────────────────────
+    # Step 12: Save metadata CSV 
     save_metadata_csv(df, paths["metadata"])
 
-    # ── Step 13: Generate report ───────────────────────────────────────────
+    # Step 13: Generate report 
     report = generate_report(
         df                 = df,
         matrix             = matrix,
@@ -916,10 +628,10 @@ def run_embedding_pipeline(
         resumed_from_batch = resumed_from_batch,
     )
 
-    # ── Step 14: Delete checkpoint (success) ───────────────────────────────
+    # Step 14: Delete checkpoint (success)
     delete_checkpoint(paths["checkpoint"])
 
-    # ── Final summary ──────────────────────────────────────────────────────
+    # Final summary
     duration   = (datetime.now() - start_time).total_seconds()
     throughput = total_rows / duration if duration > 0 else 0
 
@@ -939,11 +651,7 @@ def run_embedding_pipeline(
 
     return report
 
-
-# =============================================================================
 # ENTRY POINT
-# =============================================================================
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Step 4: Generate BAAI/bge-small-en-v1.5 embeddings (MPS/CUDA/CPU)"
@@ -1002,7 +710,7 @@ if __name__ == "__main__":
         device           = args.device,          # None = auto-detect
     )
 
-    # ── Quick verification printout ────────────────────────────────────────
+    # Quick verification printout 
     print()
     print("=" * 70)
     print("QUICK VERIFICATION")

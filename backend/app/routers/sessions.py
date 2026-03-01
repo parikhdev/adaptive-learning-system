@@ -70,7 +70,7 @@ def record_answer(body: AnswerRequest):
     correct       = session["correct_answers"]
     accuracy      = round(correct / total, 4) if total > 0 else 0.0
 
-    # Adaptive difficulty hint — seeds Phase 7
+    # Adaptive difficulty 
     current_diff  = session["avg_difficulty"]
     if accuracy > 0.8:
         next_diff = min(current_diff + 0.1, 1.0)

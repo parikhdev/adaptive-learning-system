@@ -1,8 +1,6 @@
 # data_pipeline/06_extract_correct_answers.py
 # Extracts correct answers from all questions using Groq
-# Optimized: 5 questions per API call → ~13 hours runtime
 # Safe to interrupt and resume — skips already-processed questions
-
 import os
 import re
 import time

@@ -16,24 +16,6 @@ def cosine_search_questions(
     excluded_ids: list[int],
     top_k: int = 10,
 ) -> list[dict[str, Any]]:
-    """
-    Perform pgvector cosine similarity search with pre-filters.
-
-    Pre-filters applied at DB level (reduces scan set ~121K → ~5-15K):
-        - subject match
-        - difficulty_level match
-        - exclude already-answered question IDs
-
-    No HNSW index (dropped on free tier).
-    Sequential scan is acceptable with pre-filters applied.
-
-    Returns: List of question dicts ordered by similarity (best first).
-    """
-
-    # pgvector cosine distance operator: <=>
-    # Lower value = more similar. ORDER BY ASC = most relevant first.
-
-    # Build exclusion clause dynamically
     exclusion_clause = ""
     exclusion_params: list = []
 
@@ -71,9 +53,9 @@ def cosine_search_questions(
         LIMIT %s;
     """
 
-    # Parameter order must match %s placeholders exactly
+    # Parameters in order 
     params: list = [
-        str(query_vector),   # cast to vector via ::vector
+        str(query_vector),   
         subject,
         difficulty_level,
         *exclusion_params,
@@ -101,15 +83,6 @@ def cosine_search_questions(
 
 
 def get_answered_question_ids(session_id: str) -> list[int]:
-    """
-    Fetch all question IDs already answered in a session.
-    Used to exclude from recommendation.
-    """
-    sql = """
-        SELECT question_id
-        FROM student_responses
-        WHERE session_id = %s;
-    """
     conn = None
     try:
         conn = get_connection()
@@ -126,10 +99,6 @@ def get_answered_question_ids(session_id: str) -> list[int]:
 
 
 def get_session_context(session_id: str) -> dict[str, Any] | None:
-    """
-    Fetch current session metadata needed for recommendation context.
-    Returns: dict with subject, avg_difficulty, correct_answers, total_questions
-    """
     sql = """
         SELECT
             s.subject,

@@ -1,23 +1,4 @@
 """
-=============================================================================
-ADAPTIVE LEARNING SYSTEM — DATA PIPELINE
-Script: 01_clean.py
-Phase:  2 — Dataset Preprocessing (Step 1 of 5)
-Author: Adaptive_Learning_System Architect
-
-PURPOSE:
-    Load the raw JEE/NEET CSV dataset and produce:
-    1. cleaned.csv       — verified, deduplicated, normalized rows
-    2. quarantined.csv   — flagged rows with reasons (not deleted, auditable)
-    3. cleaning_report.json — full audit trail for research documentation
-
-CRITICAL DESIGN DECISIONS:
-    - Mathematical/LaTeX content is PRESERVED. No aggressive text cleaning.
-    - Rows are QUARANTINED not deleted. Research-grade auditability.
-    - MCQ answer options embedded in 'eng' column are preserved.
-      They carry difficulty signal (used in 02_score_difficulty.py).
-    - All operations are logged with counts for reproducibility.
-
 INPUT:
     data/raw/Jee_Neet_subjectsquestions.csv
     Columns: eng (question text), Subject
@@ -26,12 +7,6 @@ OUTPUT:
     data/processed/cleaned.csv
     data/processed/quarantined.csv
     data/reports/cleaning_report.json
-
-USAGE:
-    cd data_pipeline/
-    python 01_clean.py
-    python 01_clean.py --input ../data/raw/Jee_Neet_subjectsquestions.csv
-=============================================================================
 """
 
 import os
@@ -41,25 +16,16 @@ import argparse
 import logging
 from datetime import datetime
 from pathlib import Path
-
 import pandas as pd
 
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
-
-# Minimum character length for a question to be considered valid.
-# Anything below this is likely a corrupted row or incomplete parse artifact.
 MIN_QUESTION_LENGTH = 15
 
 # Maximum character length. Questions above this are flagged (not removed)
-# for manual review — they may be multi-paragraph problems or parse errors.
 MAX_QUESTION_LENGTH = 5000
 
 # Valid subject values. Any row with a subject outside this set is quarantined.
 VALID_SUBJECTS = {"Biology", "Chemistry", "Maths", "Physics"}
 
-# Known garbage/corruption markers found during dataset inspection.
 # These patterns indicate OCR or scraping artifacts, not real questions.
 CORRUPTION_PATTERNS = [
     r"^tood",           # Known corrupt prefix found in dataset inspection
@@ -67,10 +33,7 @@ CORRUPTION_PATTERNS = [
     r"^[\W\s]+$",       # Rows with only non-word characters
 ]
 
-# =============================================================================
 # LOGGING SETUP
-# =============================================================================
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s",
@@ -78,16 +41,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-# =============================================================================
 # PATH RESOLUTION
-# =============================================================================
-
 def resolve_paths(input_csv: str) -> dict:
-    """
-    Resolve all input/output paths relative to this script's location.
-    Creates output directories if they don't exist.
-    """
     script_dir = Path(__file__).parent
     project_root = script_dir.parent
 
@@ -105,19 +60,9 @@ def resolve_paths(input_csv: str) -> dict:
 
     return paths
 
-
-# =============================================================================
 # STEP 1: LOAD DATA
-# =============================================================================
 
 def load_raw_data(input_path: Path) -> pd.DataFrame:
-    """
-    Load the raw CSV with robust encoding handling.
-
-    Why encoding='utf-8' with errors='replace':
-        The dataset contains mathematical Unicode characters (α, θ, Ω, ²).
-        Silent replacement (?) is better than a crash. We log replacement count.
-    """
     logger.info(f"Loading raw dataset from: {input_path}")
 
     df = pd.read_csv(
@@ -125,7 +70,7 @@ def load_raw_data(input_path: Path) -> pd.DataFrame:
         encoding="utf-8",
         encoding_errors="replace",  # Replace undecodable bytes with ?
         dtype=str,                  # Load all columns as string — no type coercion
-        keep_default_na=False,      # Do NOT auto-convert empty strings to NaN yet
+        keep_default_na=False,      # Do not auto-convert empty strings to NaN yet
     )
 
     logger.info(f"Raw dataset loaded: {len(df):,} rows, {len(df.columns)} columns")
@@ -142,19 +87,8 @@ def load_raw_data(input_path: Path) -> pd.DataFrame:
 
     return df
 
-
-# =============================================================================
 # STEP 2: VALIDATE AND FLAG ISSUES
-# =============================================================================
-
 def flag_issues(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Scan every row and assign a quarantine_reason if any issue is found.
-    Rows with quarantine_reason = '' pass through to cleaned output.
-
-    We run ALL checks before quarantining so the report captures every
-    issue per row — important for research documentation.
-    """
     logger.info("Running issue detection across all rows...")
 
     # Add tracking columns
@@ -171,29 +105,29 @@ def flag_issues(df: pd.DataFrame) -> pd.DataFrame:
         "whitespace_only":  0,
     }
 
-    # ── 2a. Empty or NaN text ─────────────────────────────────────────────
+    # 2a. Empty or NaN text 
     empty_mask = df["eng"].isna() | (df["eng"].str.strip() == "")
     df.loc[empty_mask, "quarantine_reason"] += "empty_text|"
     issues_found["empty_text"] = empty_mask.sum()
 
-    # ── 2b. Invalid subject ───────────────────────────────────────────────
+    # 2b. Invalid subject 
     invalid_subj_mask = ~df["Subject"].isin(VALID_SUBJECTS)
     df.loc[invalid_subj_mask, "quarantine_reason"] += "invalid_subject|"
     issues_found["invalid_subject"] = invalid_subj_mask.sum()
 
-    # ── 2c. Text too short ────────────────────────────────────────────────
+    # 2c. Text too short 
     # We fill NaN temporarily to avoid length errors on empty rows
     lengths = df["eng"].fillna("").str.len()
     too_short_mask = lengths < MIN_QUESTION_LENGTH
     df.loc[too_short_mask, "quarantine_reason"] += "too_short|"
     issues_found["too_short"] = too_short_mask.sum()
 
-    # ── 2d. Text too long (flag only, may be valid complex problem) ────────
+    # 2d. Text too long (flag only, may be valid complex problem) 
     too_long_mask = lengths > MAX_QUESTION_LENGTH
     df.loc[too_long_mask, "quarantine_reason"] += "too_long_flagged|"
     issues_found["too_long"] = too_long_mask.sum()
 
-    # ── 2e. Corruption patterns ───────────────────────────────────────────
+    # 2e. Corruption patterns 
     for pattern in CORRUPTION_PATTERNS:
         try:
             corrupt_mask = df["eng"].fillna("").str.match(pattern, case=False)
@@ -202,12 +136,12 @@ def flag_issues(df: pd.DataFrame) -> pd.DataFrame:
         except re.error:
             logger.warning(f"Invalid regex pattern skipped: {pattern}")
 
-    # ── 2f. Whitespace-only text ──────────────────────────────────────────
+    # 2f. Whitespace only text 
     whitespace_mask = df["eng"].fillna("").str.strip().str.len() == 0
     df.loc[whitespace_mask & (df["quarantine_reason"] == ""), "quarantine_reason"] += "whitespace_only|"
     issues_found["whitespace_only"] = whitespace_mask.sum()
 
-    # Clean trailing pipe delimiter from reason strings
+    # Cleaning the pipe from reason strings
     df["quarantine_reason"] = df["quarantine_reason"].str.rstrip("|")
 
     total_flagged = (df["quarantine_reason"] != "").sum()
@@ -219,27 +153,12 @@ def flag_issues(df: pd.DataFrame) -> pd.DataFrame:
     return df, issues_found
 
 
-# =============================================================================
 # STEP 3: NORMALIZE TEXT (SAFE — MATH-PRESERVING)
-# =============================================================================
-
 def normalize_text(text: str) -> str:
     """
-    Apply safe text normalization that preserves mathematical content.
-
     WHAT WE DO:
         - Normalize Windows line endings (\\r\\n → \\n)
-        - Strip leading/trailing whitespace from the full string
-        - Collapse sequences of 3+ blank lines into 2 (preserve paragraph structure)
-        - Normalize Unicode whitespace variants to standard space
-
-    WHAT WE DO NOT DO (would break formulas):
-        - Remove special characters (\\, ^, _, {, }, |, etc.)
-        - Lowercase text (case matters in variable names: V vs v, T vs t)
-        - Remove punctuation
-        - Remove numbers
-        - Remove LaTeX delimiters like \\( \\) \\[ \\]
-        - Stem or lemmatize words
+        - End sequences of 3+ blank lines into 2 (preserve paragraph structure)
     """
     if not isinstance(text, str):
         return text
@@ -247,7 +166,7 @@ def normalize_text(text: str) -> str:
     # Normalize Windows line endings
     text = text.replace("\r\n", "\n").replace("\r", "\n")
 
-    # Normalize Unicode whitespace (non-breaking space → regular space)
+    # Normalize Unicode whitespace (non-breaking space -> regular space)
     text = text.replace("\u00a0", " ").replace("\u200b", "")
 
     # Strip leading/trailing whitespace
@@ -257,7 +176,6 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"\n{3,}", "\n\n", text)
 
     # Normalize multiple spaces within a line to single space
-    # BUT only within lines, not across newlines
     lines = text.split("\n")
     lines = [re.sub(r" {2,}", " ", line) for line in lines]
     text = "\n".join(lines)
@@ -266,7 +184,6 @@ def normalize_text(text: str) -> str:
 
 
 def apply_normalization(df: pd.DataFrame) -> pd.DataFrame:
-    """Apply normalization only to rows that passed issue detection (will be cleaned)."""
     logger.info("Applying text normalization to valid rows...")
 
     # Only normalize rows that are NOT quarantined
@@ -277,28 +194,11 @@ def apply_normalization(df: pd.DataFrame) -> pd.DataFrame:
     logger.info(f"Normalization applied to {valid_mask.sum():,} valid rows")
     return df
 
-
-# =============================================================================
 # STEP 4: REMOVE EXACT DUPLICATES
-# =============================================================================
-
 def remove_duplicates(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
-    """
-    Remove exact duplicate question texts.
-
-    Strategy:
-        - Keep FIRST occurrence of each duplicate group
-        - Mark remaining duplicates as quarantined with reason 'exact_duplicate'
-        - We deduplicate ONLY on 'eng' text, not Subject
-          (same question appearing under two subjects = duplicate regardless)
-
-    Why keep-first (not keep-last):
-        Lower row indices are typically from earlier, more reliable scrape passes.
-    """
     logger.info("Detecting exact duplicates...")
 
-    # Only check duplicates among rows that haven't already been quarantined
-    # (no point marking a quarantined row as duplicate — it's already excluded)
+    # Only check duplicates among rows that are not been quarantined
     valid_mask = df["quarantine_reason"] == ""
     valid_df = df[valid_mask].copy()
 
@@ -313,11 +213,7 @@ def remove_duplicates(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
 
     return df, dupe_count
 
-
-# =============================================================================
 # STEP 5: SPLIT AND SAVE
-# =============================================================================
-
 def split_and_save(df: pd.DataFrame, paths: dict) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Split into cleaned and quarantined DataFrames, then save both.
@@ -343,10 +239,8 @@ def split_and_save(df: pd.DataFrame, paths: dict) -> tuple[pd.DataFrame, pd.Data
     return cleaned, quarantined
 
 
-# =============================================================================
-# STEP 6: GENERATE AUDIT REPORT
-# =============================================================================
 
+# STEP 6: GENERATE AUDIT REPORT
 def generate_report(
     raw_count: int,
     cleaned: pd.DataFrame,
@@ -356,11 +250,6 @@ def generate_report(
     paths: dict,
     start_time: datetime,
 ) -> dict:
-    """
-    Generate a JSON audit report.
-    This is your research documentation artifact.
-    In a paper or report, you cite these numbers in the Dataset section.
-    """
     end_time = datetime.now()
     duration_seconds = (end_time - start_time).total_seconds()
 
@@ -387,7 +276,7 @@ def generate_report(
         "std":    round(float(lengths.std()), 2),
     }
 
-    # LaTeX presence in cleaned data
+    # LATEX presence in cleaned data
     latex_count = cleaned["eng"].str.contains(
         r"\\frac|\\sqrt|\\alpha|\\theta|\\beta|\\omega",
         regex=True, na=False
@@ -444,16 +333,9 @@ def generate_report(
     logger.info(f"Audit report saved: {paths['report']}")
     return report
 
-
-# =============================================================================
 # PIPELINE ORCHESTRATOR
-# =============================================================================
-
 def run_cleaning_pipeline(input_csv: str) -> dict:
-    """
-    Main pipeline function. Runs all steps in sequence.
-    Each step receives the output of the previous step.
-    """
+    
     start_time = datetime.now()
     logger.info("=" * 60)
     logger.info("01_clean.py — Starting Data Cleaning Pipeline")
@@ -472,7 +354,7 @@ def run_cleaning_pipeline(input_csv: str) -> dict:
     # Step 3: Normalize text (only on valid rows)
     df = apply_normalization(df)
 
-    # Step 4: Remove duplicates (only among currently valid rows)
+    # Step 4: Remove duplicates (only in currently valid rows)
     df, dupe_count = remove_duplicates(df)
 
     # Step 5: Split and save
@@ -499,11 +381,7 @@ def run_cleaning_pipeline(input_csv: str) -> dict:
 
     return report
 
-
-# =============================================================================
 # ENTRY POINT
-# =============================================================================
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Step 1: Clean raw JEE/NEET CSV dataset"
@@ -518,7 +396,7 @@ if __name__ == "__main__":
 
     report = run_cleaning_pipeline(args.input)
 
-    # Print key numbers to console for quick verification
+    # Print key numbers for quick verification
     print("\n" + "=" * 60)
     print("QUICK VERIFICATION NUMBERS")
     print("=" * 60)

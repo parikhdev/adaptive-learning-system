@@ -1,7 +1,5 @@
 # backend/app/ml/difficulty.py
-# Progress-based difficulty escalation
-# No correct_answer needed — uses questions_answered as engagement proxy
-
+# Progress based difficulty increase
 from typing import Literal
 
 DifficultyLevel = Literal["Beginner", "Intermediate", "Advanced"]
@@ -12,23 +10,12 @@ def next_difficulty(
     current_level: DifficultyLevel | None,
     questions_answered: int,
 ) -> DifficultyLevel:
-    """
-    Progress-based adaptive difficulty.
-
-    0-2 questions  → Beginner      (orientation)
-    3-5 questions  → Intermediate  (building)
-    6+  questions  → Advanced      (challenge)
-
-    Honest, defensible, no fake correctness signal needed.
-    Phase 8: replace with IRT (Item Response Theory) when correct_answer added.
-    """
     if questions_answered < 3:
         return "Beginner"
     elif questions_answered < 6:
         return "Intermediate"
     else:
         return "Advanced"
-
 
 def difficulty_to_score_range(level: DifficultyLevel) -> tuple[float, float]:
     ranges: dict[DifficultyLevel, tuple[float, float]] = {

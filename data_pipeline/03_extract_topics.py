@@ -1,54 +1,19 @@
 """
-=============================================================================
-ADAPTIVE LEARNING SYSTEM — DATA PIPELINE
-Script: 03_extract_topics.py
-Phase:  2 — Dataset Preprocessing (Step 3 of 5)
-Author: Adaptive_Learning_System Architect
-
 PURPOSE:
     Assign two parameterized fields to every question in difficulty_scored.csv:
-        1. topic       — primary JEE/NEET syllabus chapter (e.g., "Electrostatics")
-        2. subtopic    — refined sub-category within topic (e.g., "Capacitors")
-
-DETECTION STRATEGY — TWO-LAYER KEYWORD TAXONOMY:
+        1. topic — primary JEE/NEET syllabus chapter (e.g., "Electrostatics")
+        2. subtopic — refined sub-category within topic (e.g., "Capacitors")
+DETECTION STRATEGY
     Layer 1: English keyword matching (case-insensitive substring)
     Layer 2: LaTeX command pattern matching (for formula-heavy questions)
-
-    Within each layer, topics are evaluated in PRIORITY ORDER — more specific
-    topics are checked before generic ones. The first match wins.
+    Within each layer, topics are evaluated in PRIORITY ORDERR
 
     If no topic matches: topic = "General", subtopic = "General"
-
-    This design is:
-    - Fast: <60s for 121k rows (pure Python regex, no ML inference)
-    - Auditable: every topic assignment is traceable to a specific keyword
-    - Honest: unmatched questions get "General" rather than a hallucinated label
-    - Compatible: topic/subtopic feed directly into Supabase schema and
-      the topic_mastery table (user progress tracking)
-
-COVERAGE ANALYSIS (from pre-script dataset analysis):
-    Physics:   ~75% matched via keywords + LaTeX
-    Chemistry: ~82% matched
-    Maths:     ~78% matched (LaTeX layer critical here)
-    Biology:   ~51% matched (short factual questions often lack keywords)
-    All subjects: ~21% tagged "General" — acceptable, honest fallback
-
-TAXONOMY DESIGN:
-    JEE Mains + Advanced + NEET 2024 official syllabus chapters used as ground truth.
-    Topics are the chapter-level units used in coaching institutes.
-
 INPUTS:
     data/processed/difficulty_scored.csv       (from 02_score_difficulty.py)
-
 OUTPUTS:
     data/processed/topics_extracted.csv        — full dataset with topic + subtopic
     data/reports/topic_report.json             — coverage and distribution audit
-
-USAGE:
-    cd data_pipeline/
-    python 03_extract_topics.py
-    python 03_extract_topics.py --input data/processed/difficulty_scored.csv
-=============================================================================
 """
 
 import os
@@ -59,12 +24,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-
 import pandas as pd
-
-# =============================================================================
-# LOGGING
-# =============================================================================
 
 logging.basicConfig(
     level=logging.INFO,
@@ -74,30 +34,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# =============================================================================
-# TOPIC TAXONOMY
-# =============================================================================
-# Structure:
+
 #   TAXONOMY[subject] = [
 #       (topic_name, subtopic_name, [keyword_list], is_regex),
 #       ...
 #   ]
-#
-# Rules:
-# 1. ORDERED: More specific entries must come BEFORE generic ones.
-#    "Photoelectric Effect" before "Waves"; "Capacitors" before "Electrostatics"
-# 2. is_regex=True: the keywords are treated as regex patterns (for LaTeX)
-# 3. is_regex=False: simple case-insensitive substring match (faster)
-# 4. All plain keywords are lowercased; matching is done on lowercased text.
-# 5. First match wins — no accumulation.
-
 TAXONOMY: dict[str, list[tuple]] = {
-
-    # ─────────────────────────────────────────────────────────────────────
     # PHYSICS — JEE/NEET Syllabus Chapters
-    # ─────────────────────────────────────────────────────────────────────
     "Physics": [
-        # ── Modern Physics (most specific keywords first) ─────────────────
+        # Modern Physics (most specific keywords first) 
         ("Modern Physics", "Photoelectric Effect",
          ["photoelectric", "photon", "work function", "threshold frequency", "einstein equation"], False),
         ("Modern Physics", "Atomic Structure",
@@ -110,7 +55,7 @@ TAXONOMY: dict[str, list[tuple]] = {
         ("Modern Physics", "X-Rays",
          ["x-ray", "x ray", "moseley", "bragg"], False),
 
-        # ── Semiconductors ────────────────────────────────────────────────
+        # Semiconductors 
         ("Semiconductors", "Logic Gates",
          ["logic gate", "nand", "nor gate", "and gate", "or gate", "xor", "boolean"], False),
         ("Semiconductors", "Transistors",
@@ -120,7 +65,7 @@ TAXONOMY: dict[str, list[tuple]] = {
         ("Semiconductors", "Semiconductor Materials",
          ["semiconductor", "doping", "n-type", "p-type", "intrinsic", "extrinsic", "silicon", "germanium"], False),
 
-        # ── Optics ────────────────────────────────────────────────────────
+        # Optics 
         ("Optics", "Wave Optics",
          ["interference", "diffraction", "polarization", "polarisation", "young's double slit",
           "ydse", "single slit", "coherent", "fringe width", "brewster"], False),
@@ -134,7 +79,7 @@ TAXONOMY: dict[str, list[tuple]] = {
          ["dispersion", "spectrum", "wavelength", "visible light", "ultraviolet", "infrared",
           "electromagnetic spectrum", "colour", "color"], False),
 
-        # ── Waves & Sound ─────────────────────────────────────────────────
+        # Waves & Sound 
         ("Waves", "Sound Waves",
          ["sound", "doppler", "echo", "sonic", "ultrasonic", "decibel", "loudness", "pitch"], False),
         ("Waves", "Standing Waves",
@@ -143,7 +88,7 @@ TAXONOMY: dict[str, list[tuple]] = {
          ["wave", "frequency", "amplitude", "wavelength", "time period", "wave speed",
           "transverse wave", "longitudinal wave", "progressive wave", "resonance"], False),
 
-        # ── Magnetism & EMI ───────────────────────────────────────────────
+        # Magnetism & EMI 
         ("Magnetism & EMI", "Electromagnetic Induction",
          ["faraday", "lenz", "electromagnetic induction", "induced emf", "motional emf",
           "flux linkage", "mutual inductance"], False),
@@ -157,7 +102,7 @@ TAXONOMY: dict[str, list[tuple]] = {
          ["magnetic field", "magnetic flux", "biot-savart", "ampere", "solenoid",
           "toroid", "bar magnet", "magnetic moment", "earth magnet", "magnetic dipole"], False),
 
-        # ── Current Electricity ───────────────────────────────────────────
+        # Current Electricity 
         ("Current Electricity", "Kirchhoff Laws",
          ["kirchhoff", "kvl", "kcl", "loop rule", "junction rule"], False),
         ("Current Electricity", "Wheatstone Bridge",
@@ -170,7 +115,7 @@ TAXONOMY: dict[str, list[tuple]] = {
           "series resistance", "parallel resistance", "drift velocity", "electric power",
           "heating effect", "joule"], False),
 
-        # ── Electrostatics ────────────────────────────────────────────────
+        # Electrostatics 
         ("Electrostatics", "Capacitors",
          ["capacitor", "capacitance", "dielectric", "farad", "energy stored", "charging capacitor",
           "parallel plate", "spherical capacitor", "cylindrical capacitor"], False),
@@ -184,7 +129,7 @@ TAXONOMY: dict[str, list[tuple]] = {
         ("Electrostatics", "Electric Field",
          ["electric field", "field lines", "dipole", "electric dipole", "permittivity"], False),
 
-        # ── Thermodynamics ────────────────────────────────────────────────
+        # Thermodynamics 
         ("Thermodynamics", "Kinetic Theory",
          ["kinetic theory", "rms speed", "mean free path", "degrees of freedom",
           "equipartition", "vrms", "vmost probable", "maxwell"], False),
@@ -201,7 +146,7 @@ TAXONOMY: dict[str, list[tuple]] = {
          ["temperature", "heat", "isothermal", "adiabatic", "isobaric", "isochoric",
           "internal energy", "kelvin", "celsius", "thermometer"], False),
 
-        # ── Mechanics — Fluid & Properties ───────────────────────────────
+        # Mechanics — Fluid & Properties 
         ("Properties of Matter", "Fluid Mechanics",
          ["bernoulli", "venturi", "viscosity", "stokes", "terminal velocity",
           "surface tension", "capillary", "buoyancy", "archimedes", "fluid pressure",
@@ -210,7 +155,7 @@ TAXONOMY: dict[str, list[tuple]] = {
          ["young's modulus", "bulk modulus", "shear modulus", "stress", "strain",
           "elastic limit", "hooke's law", "poisson ratio"], False),
 
-        # ── Mechanics — Core ─────────────────────────────────────────────
+        # Mechanics — Core 
         ("Mechanics", "Simple Harmonic Motion",
          ["simple harmonic", "shm", "pendulum", "spring mass", "time period of pendulum",
           "restoring force", "angular frequency shm"], False),
@@ -230,17 +175,15 @@ TAXONOMY: dict[str, list[tuple]] = {
          ["velocity", "displacement", "motion", "projectile", "trajectory", "uniform motion",
           "non uniform", "relative motion", "distance", "speed"], False),
 
-        # ── LaTeX-based patterns (regex) for formula-heavy Physics ───────
+        # LaTeX-based patterns (regex) for formula-heavy Physics
         # [\\x5c] reliably matches one literal backslash as stored in CSV text.
         ("Mechanics", "Kinematics",
          [r"[\\x5c]vec\{v\}", r"[\\x5c]vec\{u\}"], True),
     ],
 
-    # ─────────────────────────────────────────────────────────────────────
     # CHEMISTRY — JEE/NEET Syllabus Chapters
-    # ─────────────────────────────────────────────────────────────────────
     "Chemistry": [
-        # ── Organic — Specific reactions first ───────────────────────────
+        # Organic — Specific reactions first 
         ("Organic Chemistry", "Named Reactions",
          ["aldol", "cannizzaro", "clemmensen", "wolff-kishner", "grignard", "diels-alder",
           "beckmann", "hofmann", "gabriel", "reimer-tiemann", "kolbe", "sandmeyer",
@@ -279,7 +222,7 @@ TAXONOMY: dict[str, list[tuple]] = {
          ["organic", "carbon compound", "functional group", "homologous series",
           "iupac", "constitutional", "organic chemistry"], False),
 
-        # ── Physical Chemistry ────────────────────────────────────────────
+        # Physical Chemistry 
         ("Electrochemistry", "Electrolysis",
          ["electrolysis", "faraday's law", "electroplating", "electric furnace",
           "electrode reaction", "discharge"], False),
@@ -328,7 +271,7 @@ TAXONOMY: dict[str, list[tuple]] = {
          ["mole", "avogadro", "molar mass", "gram equivalent", "equivalent weight",
           "mole fraction", "mass percent"], False),
 
-        # ── Inorganic Chemistry ───────────────────────────────────────────
+        # Inorganic Chemistry 
         ("Inorganic Chemistry", "d & f Block",
          ["d-block", "f-block", "transition metal", "inner transition",
           "lanthanide", "actinide", "oxidation state", "variable valency",
@@ -359,17 +302,15 @@ TAXONOMY: dict[str, list[tuple]] = {
           "electronegativity trend", "shielding", "effective nuclear charge",
           "periodic property", "valence electron"], False),
 
-        # ── Environmental & Analytical ────────────────────────────────────
+        # Environmental & Analytical 
         ("Environmental Chemistry", "Pollution",
          ["pollution", "pollutant", "acid rain", "ozone depletion", "greenhouse",
           "smog", "eutrophication", "heavy metal", "bod", "cod"], False),
     ],
 
-    # ─────────────────────────────────────────────────────────────────────
     # MATHS — JEE/NEET Syllabus Chapters
-    # ─────────────────────────────────────────────────────────────────────
     "Maths": [
-        # ── Calculus ──────────────────────────────────────────────────────
+        # Calculus
         ("Calculus", "Differential Equations",
          ["differential equation", "d.e.", "de whose", "particular solution",
           "general solution", "variable separable", "linear differential", "homogeneous de"], False),
@@ -400,7 +341,7 @@ TAXONOMY: dict[str, list[tuple]] = {
         ("Calculus", "Limits",
          [r"[\\x5c]lim(?!it)", r"[\\x5c]infty"], True),
 
-        # ── Algebra ───────────────────────────────────────────────────────
+        # Algebra 
         ("Algebra", "Complex Numbers",
          ["complex number", "argand plane", "de moivre", "modulus of complex",
           "argument of complex", "polar form", "imaginary part", "real part",
@@ -427,7 +368,7 @@ TAXONOMY: dict[str, list[tuple]] = {
         ("Algebra", "Polynomial Algebra",
          [r"x\^[2-9]", r"[\\x5c]sqrt\{", r"[\\x5c]frac\{(?![dD])"], True),
 
-        # ── Trigonometry ──────────────────────────────────────────────────
+        # Trigonometry 
         ("Trigonometry", "Inverse Trigonometry",
          ["inverse trigonometric", "arcsin", "arccos", "arctan",
           "arc sin", "arc cos", "principal value", "range of inverse"], False),
@@ -452,7 +393,7 @@ TAXONOMY: dict[str, list[tuple]] = {
           r"[\\x5c]csc", r"[\\x5c]cot", r"[\\x5c]arcsin",
           r"[\\x5c]arccos", r"[\\x5c]arctan", r"[\\x5c]theta"], True),
 
-        # ── Coordinate Geometry ───────────────────────────────────────────
+        # Coordinate Geometry 
         ("Coordinate Geometry", "3D Geometry",
          ["three dimensional", "3d geometry", "direction cosine", "direction ratio",
           "plane equation", "line in 3d", "skew lines", "angle between planes",
@@ -474,7 +415,7 @@ TAXONOMY: dict[str, list[tuple]] = {
          [r"[\\x5c]vec\{r\}", r"[\\x5c]overrightarrow", r"[\\x5c]hat\{i\}",
           r"[\\x5c]hat\{j\}", r"[\\x5c]hat\{k\}", r"[\\x5c]overline\{r\}"], True),
 
-        # ── Vectors ───────────────────────────────────────────────────────
+        # Vectors 
         ("Vectors", "Vector Operations",
          ["vector", "dot product", "cross product", "scalar product", "vector product",
           "projection of vector", "angle between vectors", "unit vector",
@@ -483,7 +424,7 @@ TAXONOMY: dict[str, list[tuple]] = {
         ("Vectors", "Vector Operations",
          [r"[\\x5c]vec\{", r"[\\x5c]cdot", r"[\\x5c]overrightarrow\{"], True),
 
-        # ── Probability & Statistics ──────────────────────────────────────
+        # Probability & Statistics 
         ("Probability", "Bayes Theorem",
          ["bayes theorem", "bayes' theorem", "conditional probability",
           "posterior probability", "prior probability", "total probability"], False),
@@ -496,7 +437,7 @@ TAXONOMY: dict[str, list[tuple]] = {
           "sample space", "mutually exclusive", "independent event",
           "complement", "addition theorem", "multiplication theorem"], False),
 
-        # ── Sets, Relations & Functions ───────────────────────────────────
+        # Sets, Relations & Functions
         ("Sets & Functions", "Functions",
          ["function", "domain", "range", "codomain", "bijection", "injection",
           "surjection", "one-one", "onto", "composite function", "inverse function",
@@ -506,18 +447,16 @@ TAXONOMY: dict[str, list[tuple]] = {
           "cartesian product", "relation", "equivalence relation",
           "reflexive", "symmetric", "transitive"], False),
 
-        # ── Mathematical Reasoning ────────────────────────────────────────
+        # Mathematical Reasoning 
         ("Mathematical Reasoning", "Logic",
          ["statement", "negation", "conjunction", "disjunction", "implication",
           "biconditional", "tautology", "contradiction", "contrapositive",
           "converse", "inverse statement"], False),
     ],
 
-    # ─────────────────────────────────────────────────────────────────────
     # BIOLOGY — JEE/NEET Syllabus Chapters
-    # ─────────────────────────────────────────────────────────────────────
     "Biology": [
-        # ── Genetics & Molecular Biology ──────────────────────────────────
+        # Genetics & Molecular Biology 
         ("Genetics", "Biotechnology",
          ["recombinant dna", "restriction enzyme", "pcr", "gel electrophoresis",
           "cloning", "transgenic", "genetically modified", "biopharming",
@@ -537,7 +476,7 @@ TAXONOMY: dict[str, list[tuple]] = {
           "monohybrid", "dihybrid", "law of segregation", "independent assortment",
           "incomplete dominance", "codominance", "multiple allele", "blood group"], False),
 
-        # ── Plant Biology ─────────────────────────────────────────────────
+        # Plant Biology 
         ("Plant Physiology", "Photosynthesis",
          ["photosynthesis", "chlorophyll", "light reaction", "dark reaction",
           "calvin cycle", "c3 plant", "c4 plant", "cam plant", "photorespiration",
@@ -560,7 +499,7 @@ TAXONOMY: dict[str, list[tuple]] = {
           "monocot", "dicot", "thallophyte", "tracheophyte", "cryptogam",
           "phanerogam", "plant kingdom classification"], False),
 
-        # ── Animal & Human Biology ────────────────────────────────────────
+        # Animal & Human Biology
         ("Human Physiology", "Neural & Chemical Coordination",
          ["neuron", "synapse", "neurotransmitter", "action potential",
           "depolarization", "repolarization", "resting potential",
@@ -594,7 +533,7 @@ TAXONOMY: dict[str, list[tuple]] = {
           "arthropoda", "mollusca", "echinodermata", "chordata", "vertebrate",
           "invertebrate", "symmetry", "coelom", "notochord", "classification animal"], False),
 
-        # ── Reproduction ──────────────────────────────────────────────────
+        # Reproduction 
         ("Reproduction", "Human Reproduction",
          ["testis", "ovary", "spermatogenesis", "oogenesis", "fertilization human",
           "implantation", "pregnancy", "placenta", "parturition",
@@ -608,7 +547,7 @@ TAXONOMY: dict[str, list[tuple]] = {
           "fission", "budding", "fragmentation", "regeneration",
           "gamete", "zygote", "embryo"], False),
 
-        # ── Ecology ───────────────────────────────────────────────────────
+        # Ecology 
         ("Ecology", "Biodiversity & Conservation",
          ["biodiversity", "species richness", "endemic species", "extinction",
           "red list", "iucn", "hotspot", "protected area", "wildlife reserve",
@@ -627,14 +566,14 @@ TAXONOMY: dict[str, list[tuple]] = {
           "predation", "symbiosis", "mutualism", "commensalism", "parasitism",
           "succession", "climax community", "carrying capacity", "growth rate"], False),
 
-        # ── Evolution ─────────────────────────────────────────────────────
+        # Evolution
         ("Evolution", "Evolution",
          ["evolution", "natural selection", "darwin", "lamarck", "adaptation",
           "fossil", "homologous organ", "analogous organ", "vestigial",
           "hardy-weinberg", "genetic drift", "gene flow", "speciation",
           "reproductive isolation"], False),
 
-        # ── Cell Biology ──────────────────────────────────────────────────
+        # Cell Biology 
         ("Cell Biology", "Cell Division",
          ["mitosis", "meiosis", "prophase", "metaphase", "anaphase", "telophase",
           "spindle fiber", "centromere", "kinetochore", "cytokinesis",
@@ -652,26 +591,8 @@ TAXONOMY: dict[str, list[tuple]] = {
     ],
 }
 
-
-# =============================================================================
 # TOPIC CLASSIFIER
-# =============================================================================
-
 def classify_topic(text: str, subject: str) -> tuple[str, str]:
-    """
-    Classify a question into (topic, subtopic) using the two-layer taxonomy.
-
-    Returns:
-        (topic, subtopic) — both strings
-        Falls back to ("General", "General") if no match found.
-
-    Algorithm:
-        For each (topic, subtopic, keywords, is_regex) entry in TAXONOMY[subject]:
-            If is_regex: check any keyword regex matches text
-            Else: check any keyword appears as substring in lowercase text
-            Return (topic, subtopic) on first match
-        Return ("General", "General") if exhausted all entries
-    """
     if subject not in TAXONOMY:
         return "General", "General"
 
@@ -695,18 +616,9 @@ def classify_topic(text: str, subject: str) -> tuple[str, str]:
 
     return "General", "General"
 
-
-# =============================================================================
 # BATCH PROCESSING
-# =============================================================================
-
 def extract_topics_batch(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Apply topic classification to all rows with progress logging.
-    Expected runtime: <60 seconds for 121k rows.
-    """
     logger.info(f"Extracting topics from {len(df):,} questions...")
-
     topics = []
     subtopics = []
     total = len(df)
@@ -729,11 +641,7 @@ def extract_topics_batch(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
-
-# =============================================================================
 # PATH RESOLUTION
-# =============================================================================
-
 def resolve_paths(input_csv: str) -> dict:
     script_dir = Path(__file__).parent
     paths = {
@@ -747,10 +655,8 @@ def resolve_paths(input_csv: str) -> dict:
     return paths
 
 
-# =============================================================================
-# REPORT GENERATION
-# =============================================================================
 
+# REPORT GENERATION
 def generate_report(df: pd.DataFrame, paths: dict, start_time: datetime) -> dict:
     """Generate full coverage and distribution audit report."""
     duration = (datetime.now() - start_time).total_seconds()
@@ -799,10 +705,8 @@ def generate_report(df: pd.DataFrame, paths: dict, start_time: datetime) -> dict
     return report
 
 
-# =============================================================================
-# PIPELINE ORCHESTRATOR
-# =============================================================================
 
+# PIPELINE ORCHESTRATOR
 def run_topic_pipeline(input_csv: str) -> dict:
     start_time = datetime.now()
     logger.info("=" * 65)
@@ -862,10 +766,7 @@ def run_topic_pipeline(input_csv: str) -> dict:
     return report
 
 
-# =============================================================================
 # ENTRY POINT
-# =============================================================================
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Step 3: Extract topic and subtopic for all questions"

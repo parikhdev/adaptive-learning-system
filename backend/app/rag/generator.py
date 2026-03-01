@@ -12,11 +12,9 @@ async def generate_explanation(
     user_prompt: str,
 ) -> str:
     """
-    Call Groq API with the assembled prompt.
-    Uses AsyncGroq for non-blocking FastAPI compatibility.
-
+    Call Groq API with the prompt.
+    Uses AsyncGroq for FastAPI compatibility.
     Model   : llama-3.1-8b-instant (from config)
-    Target  : <800ms end-to-end
     """
     client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 

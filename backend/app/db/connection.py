@@ -1,8 +1,5 @@
-"""
-app/db/connection.py
-Single persistent connection — Supabase Session Mode Pooler
-Port  : 6543 (resolved SSL/IPv6 timeout on Mac M4)
-"""
+# app/db/connection.py
+
 import psycopg2
 import psycopg2.extras
 import logging
@@ -14,10 +11,6 @@ _conn: psycopg2.extensions.connection = None
 
 
 def _build_connection() -> psycopg2.extensions.connection:
-    """
-    Build a fresh psycopg2 connection using settings.DB_* fields.
-    Single source of truth for connection params.
-    """
     conn = psycopg2.connect(
         host=settings.DB_HOST,
         port=settings.DB_PORT,
@@ -38,7 +31,6 @@ def init_pool():
 
 
 def close_pool():
-    """Close connection cleanly at app shutdown."""
     global _conn
     if _conn and not _conn.closed:
         _conn.close()
@@ -46,10 +38,6 @@ def close_pool():
 
 
 def get_connection() -> psycopg2.extensions.connection:
-    """
-    Return active connection.
-    Auto-reconnects if connection was dropped (network blip, pooler timeout).
-    """
     global _conn
     if _conn is None or _conn.closed:
         log.warning("Connection lost — reconnecting...")
@@ -59,10 +47,6 @@ def get_connection() -> psycopg2.extensions.connection:
 
 
 def execute_query(sql: str, params=None) -> list[dict]:
-    """
-    Execute SELECT query.
-    Returns list of dicts keyed by column name.
-    """
     conn = get_connection()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -75,10 +59,6 @@ def execute_query(sql: str, params=None) -> list[dict]:
 
 
 def execute_write(sql: str, params=None) -> None:
-    """
-    Execute INSERT / UPDATE / DELETE.
-    Auto-commits on success, rolls back on failure.
-    """
     conn = get_connection()
     try:
         with conn.cursor() as cur:
@@ -91,10 +71,6 @@ def execute_write(sql: str, params=None) -> None:
 
 
 def execute_write_returning(sql: str, params=None) -> dict | None:
-    """
-    Execute INSERT ... RETURNING.
-    Returns the created/updated row as a dict.
-    """
     conn = get_connection()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:

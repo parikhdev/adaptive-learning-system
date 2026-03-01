@@ -13,7 +13,6 @@ Rules:
 - Use clear, exam-focused language appropriate for JEE/NEET students.
 """
 
-
 def build_prompt(
     question_text: str,
     subject: str,
@@ -21,10 +20,6 @@ def build_prompt(
     student_answer: str,
     context_chunks: list[str],
 ) -> tuple[str, str]:
-    """
-    Build prompt for concept reinforcement after any answer submission.
-    No longer framed as error correction — always fires after answer.
-    """
     if context_chunks:
         context_block = "\n\n".join(
             f"[Reference {i+1}]\n{chunk.strip()}"
@@ -53,5 +48,4 @@ def build_prompt(
     f"3. Show the key formula or principle involved.\n"
     f"4. Do not say the student is wrong — just explain what leads to the correct answer."
 )
-
     return SYSTEM_PROMPT_TEMPLATE, user_prompt

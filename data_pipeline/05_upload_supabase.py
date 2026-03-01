@@ -1,12 +1,10 @@
 """
 05_upload_supabase.py
-Adaptive Learning System — Phase 2 Final Upload
 Direct Postgres via psycopg2 (bypasses REST API / 525 SSL issues)
 CSV    : data/processed/topics_extracted.csv
 Matrix : data/processed/embeddings_matrix.npy
 Tables : questions, question_embeddings
 """
-
 import os
 import time
 import logging
@@ -15,8 +13,6 @@ import pandas as pd
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
-
-# ── Config ────────────────────────────────────────────────────────────────────
 
 load_dotenv()
 
@@ -38,19 +34,16 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# ── Connection ────────────────────────────────────────────────────────────────
-
+# Connection 
 def get_connection():
     return psycopg2.connect(DB_URL)
 
-# ── Utilities ─────────────────────────────────────────────────────────────────
-
+# Utilities 
 def chunked(lst, n):
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
 
-# ── Stage 1: Upload Questions ─────────────────────────────────────────────────
-
+# Stage 1: Upload Questions
 def fetch_uploaded_source_row_ids(conn) -> set:
     with conn.cursor() as cur:
         cur.execute("SELECT source_row_id FROM questions;")
@@ -126,7 +119,7 @@ def upload_questions(conn, df: pd.DataFrame):
     log.info(f"Questions done — Success: {success} | Failed: {fail}")
 
 
-# ── Stage 2: Build UUID Map ───────────────────────────────────────────────────
+# Stage 2: Build UUID Map 
 
 def fetch_id_map(conn) -> dict:
     """Returns {source_row_id (int) -> question uuid (str)}"""
@@ -140,8 +133,7 @@ def fetch_id_map(conn) -> dict:
     return id_map
 
 
-# ── Stage 3: Upload Embeddings ────────────────────────────────────────────────
-
+# Stage 3: Upload Embeddings
 def fetch_uploaded_question_ids(conn) -> set:
     with conn.cursor() as cur:
         cur.execute("SELECT question_id FROM question_embeddings;")
@@ -149,7 +141,6 @@ def fetch_uploaded_question_ids(conn) -> set:
     uploaded = {str(r[0]) for r in rows}
     log.info(f"Embeddings already uploaded: {len(uploaded)}")
     return uploaded
-
 
 def upload_embeddings(conn, df: pd.DataFrame, embeddings: np.ndarray, id_map: dict):
     already = fetch_uploaded_question_ids(conn)
@@ -212,8 +203,7 @@ def upload_embeddings(conn, df: pd.DataFrame, embeddings: np.ndarray, id_map: di
         log.info("Rerun script to resume failed batches. Fully idempotent.")
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
-
+# Main
 def main():
     log.info("=" * 60)
     log.info("Phase 2 Upload | Direct Postgres | Adaptive Learning System")

@@ -1,61 +1,15 @@
 """
-=============================================================================
-ADAPTIVE LEARNING SYSTEM — DATA PIPELINE
-Script: 02_score_difficulty.py
-Phase:  2 — Dataset Preprocessing (Step 2 of 5)
-Author: Adaptive_Learning_System Architect
-
 PURPOSE:
     Assign three parameterized fields to every question in cleaned.csv:
         1. difficulty_score    — continuous 0.0–1.0 composite signal
         2. difficulty_level    — 'Beginner' | 'Intermediate' | 'Advanced'
         3. estimated_time      — seconds (integer), predicted time-on-task
-
-CRITICAL ARCHITECTURAL DECISION — BINNING STRATEGY:
-    Fixed thresholds (e.g., score < 0.35 = Beginner) produce 92% Beginner
-    on this dataset because scores cluster at the low end. This destroys
-    adaptive utility — you cannot meaningfully differentiate students.
-
-    SOLUTION: Per-subject percentile tertile binning.
-        - Compute raw difficulty score (0.0–1.0 continuous)
-        - For each subject, find 33rd and 67th percentile of that subject's scores
-        - Bin bottom 33% as Beginner, middle 33% as Intermediate, top 33% as Advanced
-        - Result: near-equal class distribution per subject (~33%/33%/33%)
-        - Interpretation: "difficulty relative to other questions in same subject"
-        - Thresholds saved to JSON sidecar for use by FastAPI adaptive engine
-
-SCORING MODEL — 5-SIGNAL WEIGHTED COMPOSITE:
-    difficulty_score = (
-        w1 * length_score      +   # Question text length (normalized)
-        w2 * formula_score     +   # LaTeX formula density
-        w3 * symbol_score      +   # Greek/mathematical symbol density
-        w4 * question_type     +   # Assertion-Reason, Match-Column, Multi-part bonus
-        w5 * keyword_score         # Subject-specific advanced concept keywords
-    )
-
-    Weights (tunable via SCORING_WEIGHTS constant):
-        w1=0.25, w2=0.25, w3=0.20, w4=0.20, w5=0.10
-
-ESTIMATED TIME MODEL:
-    base_time (seconds) per subject: Physics=90, Chemistry=75, Maths=120, Biology=60
-    + length_bonus:   +0.15s per character above 150
-    + formula_bonus:  +8s per LaTeX formula (\\frac, \\sqrt, \\int)
-    + type_bonus:     +15s for Assertion-Reason, +25s for Match-Column, +20s multi-part
-    Capped at: [30s, 300s] — floor/ceiling for adaptive engine sanity
-
 INPUTS:
     data/processed/cleaned.csv          (from 01_clean.py)
-
 OUTPUTS:
     data/processed/difficulty_scored.csv     — full dataset with new columns
     data/reports/difficulty_thresholds.json  — per-subject p33/p67 cutoffs
     data/reports/difficulty_report.json      — full audit report
-
-USAGE:
-    cd data_pipeline/
-    python 02_score_difficulty.py
-    python 02_score_difficulty.py --input data/processed/cleaned.csv --weights 0.25 0.25 0.20 0.20 0.10
-=============================================================================
 """
 
 import os
@@ -70,11 +24,7 @@ from typing import Optional
 import pandas as pd
 import numpy as np
 
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
-
-# ── Scoring weights — must sum to 1.0 ─────────────────────────────────────
+# Scoring weights — must sum to 1.0 
 SCORING_WEIGHTS = {
     "length":        0.25,   # Longer questions require more reading + more complex setup
     "formula":       0.25,   # Formula density is strongest single difficulty signal
@@ -86,23 +36,20 @@ SCORING_WEIGHTS = {
 # Validation
 assert abs(sum(SCORING_WEIGHTS.values()) - 1.0) < 1e-9, "Weights must sum to 1.0"
 
-# ── Length normalization anchor ────────────────────────────────────────────
+
 # Characters at which length_score reaches 1.0.
-# Set at ~95th percentile of question length (500 chars) so most questions
-# are distributed across 0–1 rather than all clustering near 0.
 LENGTH_NORMALIZATION_ANCHOR = 500
 
-# ── Formula density normalization anchor ───────────────────────────────────
 # A question with this many LaTeX formula commands gets formula_score = 1.0
 FORMULA_COUNT_ANCHOR = 5
 
-# ── Symbol density normalization anchor ────────────────────────────────────
+# Symbol density normalization 
 SYMBOL_COUNT_ANCHOR = 3
 
-# ── Keyword count for full keyword_score ──────────────────────────────────
+# Keyword count for full keyword_score
 KEYWORD_COUNT_ANCHOR = 3
 
-# ── Estimated time base values (seconds) per subject ──────────────────────
+# Estimated time base values (seconds) per subject
 BASE_TIME_SECONDS = {
     "Physics":   90,
     "Chemistry": 75,
@@ -112,9 +59,7 @@ BASE_TIME_SECONDS = {
 TIME_MIN_SECONDS = 30
 TIME_MAX_SECONDS = 300
 
-# ── Subject-specific advanced concept keyword lists ────────────────────────
-# These are validated against the dataset — only terms that actually appear
-# in the corpus are included (see signal audit in architecture notes).
+# Subject-specific advanced concept keyword lists
 ADVANCED_KEYWORDS = {
     "Physics": [
         "kirchhoff", "capacitance", "impedance", "torque", "angular momentum",
@@ -152,7 +97,7 @@ ADVANCED_KEYWORDS = {
     ],
 }
 
-# ── Question type patterns and their cognitive load bonuses ───────────────
+# Question type patterns 
 QUESTION_TYPE_PATTERNS = [
     # (pattern, is_regex, time_bonus_seconds, type_score_bonus, label)
     (r"Assertion.*Reason|Reason.*Assertion",   True,  15, 0.30, "assertion_reason"),
@@ -167,7 +112,6 @@ QUESTION_TYPE_PATTERNS = [
     (r"EXCEPT|INCORRECT|NOT correct|false",    True,   5, 0.10, "negative_assertion"),
 ]
 
-# ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s",
@@ -175,14 +119,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-# =============================================================================
-# SIGNAL EXTRACTORS
-# =============================================================================
-
-# Pre-compiled regex patterns for performance (compiled once, reused 121k times)
-
-# Formula patterns — count of distinct formula command occurrences
+# SIGNAL EXTRACTORS (reused 121k times)
 _RE_FORMULA = re.compile(
     r"\\frac|\\sqrt|\\int(?:egral)?|\\lim|\\sum|\\prod|\\oint|\\partial|\\nabla"
     r"|\\cdot|\\times|\\pm|\\mp|\\infty|\\log|\\ln|\\exp"
@@ -201,46 +138,20 @@ _RE_LATEX_BLOCK = re.compile(r"\\\(|\\\[|\\begin\{")
 
 
 def extract_length_score(text: str) -> float:
-    """
-    Normalize question length to [0, 1].
-    Uses raw character count including LaTeX markup, which is appropriate
-    because LaTeX markup correlates with complexity even if not all chars
-    are readable text.
-    """
     return min(len(text) / LENGTH_NORMALIZATION_ANCHOR, 1.0)
 
 
 def extract_formula_score(text: str) -> float:
-    """
-    Count LaTeX mathematical command occurrences, normalize to [0, 1].
-
-    Why count occurrences not presence:
-        A question with 1 \\frac is different from one with 5 \\frac commands.
-        The latter likely involves a multi-step derivation.
-    """
     count = len(_RE_FORMULA.findall(text))
     return min(count / FORMULA_COUNT_ANCHOR, 1.0)
 
 
 def extract_symbol_score(text: str) -> float:
-    """
-    Count Greek letter and mathematical symbol occurrences.
-    High symbol density = high conceptual abstraction = harder.
-    """
     count = len(_RE_SYMBOL.findall(text))
     return min(count / SYMBOL_COUNT_ANCHOR, 1.0)
 
 
 def extract_question_type_score(text: str) -> tuple[float, str, int]:
-    """
-    Detect question format and return:
-        - type_score:       cognitive load bonus (0.0–1.0 capped)
-        - detected_type:    string label for the audit report
-        - time_bonus:       seconds to add to estimated_time
-
-    Multiple patterns can match simultaneously (e.g., a multi-part
-    assertion-reason question). Bonuses are accumulated then capped.
-    """
     text_lower = text.lower()
     total_score_bonus = 0.0
     total_time_bonus = 0
@@ -265,41 +176,13 @@ def extract_question_type_score(text: str) -> tuple[float, str, int]:
 
 
 def extract_keyword_score(text: str, subject: str) -> float:
-    """
-    Count advanced concept keyword hits for the given subject.
-    Case-insensitive substring match (not word boundary — compound terms
-    like 'angular momentum' must match as substrings).
-    """
     text_lower = text.lower()
     keywords = ADVANCED_KEYWORDS.get(subject, [])
     hit_count = sum(1 for kw in keywords if kw in text_lower)
     return min(hit_count / KEYWORD_COUNT_ANCHOR, 1.0)
 
-
-# =============================================================================
 # COMPOSITE SCORER
-# =============================================================================
-
 def compute_difficulty_score(text: str, subject: str) -> dict:
-    """
-    Compute all signals and return a dict with the composite score
-    plus all intermediate values for transparency/audit.
-
-    Returns:
-        {
-            difficulty_score:   float 0.0–1.0
-            score_length:       float 0.0–1.0
-            score_formula:      float 0.0–1.0
-            score_symbol:       float 0.0–1.0
-            score_type:         float 0.0–1.0
-            score_keyword:      float 0.0–1.0
-            question_type:      str
-            raw_formula_count:  int
-            raw_symbol_count:   int
-            has_latex:          bool
-            time_bonus_seconds: int
-        }
-    """
     s_length  = extract_length_score(text)
     s_formula = extract_formula_score(text)
     s_symbol  = extract_symbol_score(text)
@@ -327,28 +210,8 @@ def compute_difficulty_score(text: str, subject: str) -> dict:
         "has_latex":          bool(_RE_LATEX_BLOCK.search(text)),
         "time_bonus_seconds": time_bonus,
     }
-
-
-# =============================================================================
 # ESTIMATED TIME MODEL
-# =============================================================================
-
 def compute_estimated_time(text: str, subject: str, time_bonus: int) -> int:
-    """
-    Estimate time-on-task in seconds.
-
-    Formula:
-        base_time (subject-specific)
-        + length_bonus:  +0.15s per character above 150
-        + formula_bonus: +8s per formula command (capped at 40s)
-        + type_bonus:    from question_type detection
-        → clamped to [TIME_MIN_SECONDS, TIME_MAX_SECONDS]
-
-    The 0.15s/char rate is derived from reading speed research:
-    average adult reads ~250 words/min = ~4 words/sec.
-    At ~5 chars/word, that's ~20 chars/sec reading-only.
-    We add processing time → ~0.10–0.20s/char for technical content.
-    """
     base = BASE_TIME_SECONDS.get(subject, 90)
 
     # Length bonus (above 150 char baseline)
@@ -363,16 +226,8 @@ def compute_estimated_time(text: str, subject: str, time_bonus: int) -> int:
 
     return clamped
 
-
-# =============================================================================
 # BATCH PROCESSING
-# =============================================================================
-
 def score_all_questions(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Apply scoring to all rows. Processes in-place with logged progress.
-    Expected runtime: ~30–60 seconds for 121k rows.
-    """
     logger.info(f"Scoring {len(df):,} questions. This will take ~30–60 seconds...")
 
     results = []
@@ -400,29 +255,8 @@ def score_all_questions(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# =============================================================================
 # PER-SUBJECT PERCENTILE TERTILE BINNING
-# =============================================================================
-
 def apply_tertile_binning(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-    """
-    Assign difficulty_level using per-subject 33rd/67th percentile thresholds.
-
-    WHY PER-SUBJECT (not global):
-        Physics questions are harder on average than Biology questions in this
-        dataset. A global threshold would classify most Biology as Beginner
-        and most Physics as Advanced, which is not what we want.
-        We want ~33% Beginner / 33% Intermediate / 33% Advanced WITHIN each subject,
-        so the adaptive engine can meaningfully differentiate students in any subject.
-
-    WHY TERTILE (not fixed threshold):
-        Fixed thresholds produce 92% Beginner on this dataset (confirmed in analysis).
-        Tertile gives guaranteed ~33% splits regardless of score distribution shape.
-
-    THRESHOLDS OUTPUT:
-        Saved to difficulty_thresholds.json so the FastAPI adaptive engine
-        can use them to classify new questions added later.
-    """
     logger.info("Applying per-subject percentile tertile binning...")
 
     df["difficulty_level"] = ""
@@ -472,11 +306,7 @@ def apply_tertile_binning(df: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     logger.info("Tertile binning complete.")
     return df, thresholds
 
-
-# =============================================================================
 # PATH RESOLUTION
-# =============================================================================
-
 def resolve_paths(input_csv: str) -> dict:
     script_dir = Path(__file__).parent
     paths = {
@@ -490,11 +320,7 @@ def resolve_paths(input_csv: str) -> dict:
     paths["thresholds"].parent.mkdir(parents=True, exist_ok=True)
     return paths
 
-
-# =============================================================================
 # REPORT GENERATION
-# =============================================================================
-
 def generate_report(
     df: pd.DataFrame,
     thresholds: dict,
@@ -570,11 +396,7 @@ def generate_report(
     logger.info(f"Thresholds saved:   {paths['thresholds']}")
     return report
 
-
-# =============================================================================
 # PIPELINE ORCHESTRATOR
-# =============================================================================
-
 def run_difficulty_pipeline(
     input_csv: str,
     weights: Optional[list] = None,
@@ -674,11 +496,7 @@ def run_difficulty_pipeline(
 
     return report
 
-
-# =============================================================================
 # ENTRY POINT
-# =============================================================================
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Step 2: Score difficulty and estimate time for all questions"

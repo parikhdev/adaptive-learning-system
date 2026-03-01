@@ -40,4 +40,4 @@ class AnswerResponse(BaseModel):
     total_questions:    int
     correct_answers:    int
     accuracy:           float
-    next_difficulty:    float           # seeds adaptive engine Phase 7
+    next_difficulty:    float          

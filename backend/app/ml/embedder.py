@@ -12,9 +12,8 @@ MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
 class Embedder:
     """
-    Singleton-safe wrapper around BAAI/bge-small-en-v1.5.
+    BAAI/bge-small-en-v1.5.
     Loads model once. encode() returns a normalized float32 vector.
-    Target: <200ms per inference.
     """
 
     def __init__(self):
@@ -25,10 +24,6 @@ class Embedder:
         logger.info(f"[Embedder] Model loaded in {elapsed:.1f}ms")
 
     def encode(self, text: str) -> list[float]:
-        """
-        Encode a single text string into a normalized 384-dim vector.
-        Returns: list[float] — compatible with pgvector literal casting.
-        """
         t0 = time.perf_counter()
 
         # BGE models benefit from this prefix for retrieval tasks
@@ -36,7 +31,7 @@ class Embedder:
 
         vector: np.ndarray = self.model.encode(
             prefixed,
-            normalize_embeddings=True,   # L2 normalize → cosine via dot product
+            normalize_embeddings=True,   # L2 normalize -> cosine via dot product
             convert_to_numpy=True,
         )
 
@@ -46,10 +41,6 @@ class Embedder:
         return vector.astype(np.float32).tolist()
 
     def build_query(self, subject: str, topic: str | None = None) -> str:
-        """
-        Construct a retrieval query string from student context.
-        This is what gets embedded and used for similarity search.
-        """
         parts = [subject.strip()]
         if topic and topic.strip():
             parts.append(topic.strip())

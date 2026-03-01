@@ -4,7 +4,6 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # .env is at project root: adaptive-learning-system/.env
-# backend/app/config.py → go up THREE levels → project root/.env
 ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
 

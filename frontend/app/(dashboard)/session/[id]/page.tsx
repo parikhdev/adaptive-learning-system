@@ -59,8 +59,6 @@ export default function SessionPage() {
     }, [sessionId, studentId, subject, topic, setQuestion, setLoading])
 
     useEffect(() => {
-        // Wait for Zustand store to hydrate from sessionStorage
-        // then load question only if we have valid session context
         const timer = setTimeout(() => {
             if (studentId && subject) {
                 loadNextQuestion()
@@ -75,7 +73,7 @@ export default function SessionPage() {
 
         const timeTaken = Math.round((Date.now() - answerStartTime.current) / 1000)
 
-        // Record answer in backend → populates excluded_ids for next /recommend call
+        // Record answer in backend 
         await recordAnswer(
             sessionId,
             currentQuestion.id,
@@ -179,12 +177,3 @@ export default function SessionPage() {
         </div>
     )
 }
-/*
-```
-
----
-
-Save the file. Start a fresh session, answer a question, then verify in backend terminal you see:
-```
-POST / sessions / answer HTTP / 1.1" 200
-*/
