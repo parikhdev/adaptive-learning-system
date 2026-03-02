@@ -111,14 +111,15 @@ def get_session_context(session_id: str) -> dict[str, Any] | None:
         LEFT JOIN student_responses sr ON sr.session_id = s.id
         LEFT JOIN questions q ON q.id = sr.question_id
         WHERE s.id = %s
-        ORDER BY sr.answered_at DESC
+        ORDER BY sr.answered_at DESC NULLS LAST
         LIMIT 1;
     """
+
     conn = None
     try:
         conn = get_connection()
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT question_id FROM student_responses WHERE session_id = %s", (session_id,))
+            cur.execute(sql, (session_id,))
             row = cur.fetchone()
             return dict(row) if row else None
     except Exception as e:
