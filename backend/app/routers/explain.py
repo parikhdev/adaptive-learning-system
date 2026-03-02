@@ -11,7 +11,7 @@ router = APIRouter(prefix="/explain", tags=["RAG Explanation"])
 logger = logging.getLogger(__name__)
 
 
-@router.post("/", response_model=ExplainResponse)
+@router.post("", response_model=ExplainResponse)
 async def explain_answer(request: ExplainRequest) -> ExplainResponse:
     # Step 1: Resolve question text from ID
     question_text = fetch_question_text(request.question_id)

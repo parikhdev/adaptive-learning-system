@@ -7,7 +7,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL
 export async function fetchExplanation(
     payload: ExplainRequest
 ): Promise<ExplainResponse> {
-    const res = await fetch(`${API_URL}/explain/`, {
+    const res = await fetch(`${API_URL}/explain`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
