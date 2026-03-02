@@ -20,7 +20,7 @@ router = APIRouter(prefix="/recommend", tags=["Recommendation"])
 logger = logging.getLogger(__name__)
 
 
-@router.post("/", response_model=RecommendResponse)
+@router.post("", response_model=RecommendResponse)
 def recommend_question(request: RecommendRequest) -> RecommendResponse:
     """
     POST /recommend/

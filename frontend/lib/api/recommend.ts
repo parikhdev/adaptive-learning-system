@@ -7,7 +7,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL
 export async function fetchRecommendation(
     payload: RecommendRequest
 ): Promise<RecommendResponse> {
-    const res = await fetch(`${API_URL}/recommend/`, {
+    const res = await fetch(`${API_URL}/recommend`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
     logger.info("[Shutdown] Cleanup complete.")
 
 
-app = FastAPI(
+app = FastAPI(redirect_slashes=False, 
     title="Adaptive Learning System API",
     version="5.0.0",
     description="JEE/NEET Adaptive Question Recommendation + RAG Explanation Engine",
