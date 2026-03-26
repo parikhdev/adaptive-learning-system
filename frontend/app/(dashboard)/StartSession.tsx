@@ -1,11 +1,12 @@
 "use client"
+// frontend/app/(dashboard)/StartSession.tsx
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { SubjectSelector } from "@/components/SubjectSelector"
 import { startSession } from "@/lib/api/explain"
 import { useSessionStore } from "@/lib/store/session"
-import { Subject } from "@/types"
+import { Subject, DifficultyLevel, DifficultyMode } from "@/types"
 
 export function StartSession({ studentId }: { studentId: string }) {
     const router = useRouter()
@@ -13,14 +14,30 @@ export function StartSession({ studentId }: { studentId: string }) {
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
-    async function handleStart(subject: Subject, topic: string | null) {
+    async function handleStart(
+        subject: Subject,
+        topic: string | null,
+        difficultyMode: DifficultyMode,
+        fixedDifficulty: DifficultyLevel | null,
+    ) {
         setIsLoading(true)
         setError(null)
-
         try {
-            const session = await startSession(studentId, subject)
-            resetSession()                               // clear previous session state
-            setSession(session.id, studentId, subject, topic)
+            const session = await startSession(
+                studentId,
+                subject,
+                difficultyMode,
+                fixedDifficulty,
+            )
+            resetSession()
+            setSession(
+                session.id,
+                studentId,
+                subject,
+                topic,
+                difficultyMode,
+                fixedDifficulty,
+            )
             router.push(`/session/${session.id}`)
         } catch {
             setError("Failed to start session. Is the backend running?")

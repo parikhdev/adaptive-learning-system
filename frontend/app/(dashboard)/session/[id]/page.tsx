@@ -1,4 +1,5 @@
 "use client"
+// frontend/app/(dashboard)/session/[id]/page.tsx
 
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useParams } from "next/navigation"
@@ -8,9 +9,8 @@ import { fetchExplanation, recordAnswer } from "@/lib/api/explain"
 import { QuestionCard } from "@/components/QuestionCard"
 import { ExplanationPanel } from "@/components/ExplanationPanel"
 import { SessionStats } from "@/components/SessionStats"
-import { ExplainResponse, DifficultyLevel } from "@/types"
 import { IntelligencePanel } from "@/components/IntelligencePanel"
-
+import { ExplainResponse, DifficultyLevel } from "@/types"
 
 export default function SessionPage() {
     const { id: sessionId } = useParams<{ id: string }>()
@@ -19,6 +19,8 @@ export default function SessionPage() {
         studentId,
         subject,
         topic,
+        difficultyMode,
+        fixedDifficulty,
         currentQuestion,
         currentDifficulty,
         selectedAnswer,
@@ -34,11 +36,24 @@ export default function SessionPage() {
     const [explanation, setExplanation] = useState<ExplainResponse | null>(null)
     const [explanationLoading, setExplanationLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
-    const answerStartTime = useRef<number>(Date.now())
     const [recommendedDifficulty, setRecommendedDifficulty] = useState<DifficultyLevel>("Intermediate")
 
+    const answerStartTime = useRef<number>(Date.now())
+
+    // Keep a ref to the latest store values so loadNextQuestion always reads
+    // fresh values even when called from inside a stale closure (e.g. after
+    // Zustand hydration from sessionStorage finishes after the first render).
+    const storeRef = useRef({ difficultyMode, fixedDifficulty, studentId, subject, topic })
+    useEffect(() => {
+        storeRef.current = { difficultyMode, fixedDifficulty, studentId, subject, topic }
+    })
+
     const loadNextQuestion = useCallback(async () => {
+        // Read directly from ref so we always get the latest Zustand values,
+        // not the values captured when this callback was first created.
+        const { studentId, subject, topic, difficultyMode, fixedDifficulty } = storeRef.current
         if (!studentId || !subject) return
+
         setLoading(true)
         setError(null)
         try {
@@ -47,40 +62,36 @@ export default function SessionPage() {
                 student_id: studentId,
                 subject,
                 topic: topic ?? undefined,
+                difficulty_mode: difficultyMode,
+                // Always send fixed_difficulty — in adaptive mode it tells the backend
+                // which level to START from. In fixed mode it is the permanent level.
+                fixed_difficulty: fixedDifficulty ?? undefined,
             })
             setQuestion(result.question, result.recommended_difficulty)
             setRecommendedDifficulty(result.recommended_difficulty)
-            answerStartTime.current = Date.now()   // reset timer for new question
+            answerStartTime.current = Date.now()
         } catch {
             setError("Failed to load question. Please try again.")
         } finally {
             setLoading(false)
         }
-    }, [sessionId, studentId, subject, topic, setQuestion, setLoading])
+    }, [sessionId, setQuestion, setLoading])  // sessionId is stable; store read via ref
 
+    // Load first question once store has hydrated (100ms lets sessionStorage restore)
     useEffect(() => {
         const timer = setTimeout(() => {
-            if (studentId && subject) {
+            if (storeRef.current.studentId && storeRef.current.subject) {
                 loadNextQuestion()
             }
         }, 100)
-
         return () => clearTimeout(timer)
-    }, [studentId, subject])
+    }, [loadNextQuestion])
 
     async function handleAnswer(answer: string) {
         if (!currentQuestion || selectedAnswer) return
-
         const timeTaken = Math.round((Date.now() - answerStartTime.current) / 1000)
 
-        // Record answer in backend 
-        await recordAnswer(
-            sessionId,
-            currentQuestion.id,
-            false,
-            timeTaken,
-        )
-
+        await recordAnswer(sessionId, currentQuestion.id, false, timeTaken)
         submitAnswer(answer, false)
 
         setExplanationLoading(true)
@@ -115,7 +126,7 @@ export default function SessionPage() {
         await loadNextQuestion()
     }
 
-    if (!studentId || !subject) {
+    if (!storeRef.current.studentId || !storeRef.current.subject) {
         return (
             <div className="text-center py-20">
                 <p className="text-slate-400">Session not found.</p>

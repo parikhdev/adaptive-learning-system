@@ -1,5 +1,4 @@
 # backend/app/routers/recommend.py
-
 import logging
 from fastapi import APIRouter, HTTPException
 
@@ -22,56 +21,38 @@ logger = logging.getLogger(__name__)
 
 @router.post("", response_model=RecommendResponse)
 def recommend_question(request: RecommendRequest) -> RecommendResponse:
-    """
-    POST /recommend/
 
-    Flow:
-    1. Fetch session context (total_questions answered so far)
-    2. Compute next_difficulty via progress-based escalation
-    3. Build query text from subject + topic
-    4. Embed query → 384-dim vector
-    5. pgvector cosine search with subject + difficulty + exclusion filters
-    6. Return best (most similar, correct difficulty) question
-    """
 
-    # Step 1: Session context 
+    # Step 1: Session context
     context = get_session_context(request.session_id)
-
     if context is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Session {request.session_id} not found."
-        )
+        raise HTTPException(status_code=404,
+                            detail=f"Session {request.session_id} not found.")
 
-    questions_answered: int = context.get("total_questions", 0)
-    last_difficulty: str | None = context.get("last_difficulty")
+    questions_answered: int       = context.get("total_questions", 0)
+    last_difficulty:    str | None = context.get("last_difficulty")
 
-    # Step 2: Progress-based difficulty 
+    # Final resolved values — request body takes priority over DB
+    mode             = request.difficulty_mode  or db_mode or "adaptive"
+    fixed_difficulty = request.fixed_difficulty or db_fd
+
+    # Step 2: Compute target difficulty
     target_difficulty = next_difficulty(
-        current_level=last_difficulty,        # type: ignore[arg-type]
+        current_level=last_difficulty,
         questions_answered=questions_answered,
+        mode=mode,
+        fixed_difficulty=fixed_difficulty,
     )
 
-    logger.info(
-        f"[Recommend] session={request.session_id} "
-        f"questions_answered={questions_answered} "
-        f"→ target_difficulty={target_difficulty}"
-    )
-
-    # Step 3: Build query text 
-    embedder = get_embedder()
-    query_text = embedder.build_query(
-        subject=request.subject,
-        topic=request.topic,
-    )
-
-    # Step 4: Embed 
+    # Step 3: Embed
+    embedder     = get_embedder()
+    query_text   = embedder.build_query(subject=request.subject, topic=request.topic)
     query_vector = embedder.encode(query_text)
 
-    # Step 5: Fetch answered IDs (exclusion set) 
+    # Step 4: Exclusion list 
     excluded_ids = get_answered_question_ids(request.session_id)
 
-    # Step 6: Vector search 
+    # Step 5: Vector search
     candidates = cosine_search_questions(
         query_vector=query_vector,
         subject=request.subject,
@@ -81,11 +62,7 @@ def recommend_question(request: RecommendRequest) -> RecommendResponse:
     )
 
     if not candidates:
-        logger.warning(
-            f"[Recommend] No candidates at {target_difficulty} "
-            f"for subject={request.subject}. "
-            f"Falling back to {DEFAULT_DIFFICULTY}."
-        )
+        logger.warning(f"[Recommend] No candidates at {target_difficulty} — fallback to {DEFAULT_DIFFICULTY}")
         candidates = cosine_search_questions(
             query_vector=query_vector,
             subject=request.subject,
@@ -97,11 +74,7 @@ def recommend_question(request: RecommendRequest) -> RecommendResponse:
     if not candidates:
         raise HTTPException(
             status_code=404,
-            detail=(
-                f"No questions available for subject='{request.subject}' "
-                f"at difficulty='{target_difficulty}'. "
-                f"All questions may have been answered."
-            )
+            detail=f"No questions available for subject='{request.subject}' at '{target_difficulty}'.",
         )
 
     best = candidates[0]
@@ -110,6 +83,7 @@ def recommend_question(request: RecommendRequest) -> RecommendResponse:
         session_id=request.session_id,
         student_id=request.student_id,
         recommended_difficulty=target_difficulty,
+        difficulty_mode=mode,
         question=RecommendedQuestion(
             id=best["id"],
             original_text=best["original_text"],
@@ -124,10 +98,12 @@ def recommend_question(request: RecommendRequest) -> RecommendResponse:
             cosine_distance=float(best["cosine_distance"]),
         ),
         debug={
-            "query_text": query_text,
-            "target_difficulty": target_difficulty,
-            "candidates_evaluated": len(candidates),
+            "query_text":              query_text,
+            "target_difficulty":       target_difficulty,
+            "difficulty_mode":         mode,
+            "fixed_difficulty":        fixed_difficulty,
+            "candidates_evaluated":    len(candidates),
             "excluded_question_count": len(excluded_ids),
-            "questions_answered": questions_answered,
-        }
+            "questions_answered":      questions_answered,
+        },
     )

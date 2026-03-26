@@ -1,7 +1,7 @@
 // frontend/types/index.ts
 
 export type DifficultyLevel = "Beginner" | "Intermediate" | "Advanced"
-
+export type DifficultyMode = "adaptive" | "fixed"
 export type Subject = "Physics" | "Chemistry" | "Maths" | "Biology"
 
 export interface Question {
@@ -23,12 +23,16 @@ export interface RecommendRequest {
     student_id: string
     subject: string
     topic?: string
+    // NEW
+    difficulty_mode?: DifficultyMode
+    fixed_difficulty?: DifficultyLevel
 }
 
 export interface RecommendResponse {
     session_id: string
     student_id: string
     recommended_difficulty: DifficultyLevel
+    difficulty_mode: DifficultyMode   // NEW — echoed from backend
     question: Question
     debug?: Record<string, unknown>
 }
@@ -55,6 +59,9 @@ export interface ExplainResponse {
 export interface SessionStartRequest {
     student_id: string
     subject: string
+    // NEW
+    difficulty_mode?: DifficultyMode
+    fixed_difficulty?: DifficultyLevel
 }
 
 export interface SessionStartResponse {
@@ -62,6 +69,9 @@ export interface SessionStartResponse {
     student_id: string
     subject: string
     started_at: string
+    // NEW
+    difficulty_mode: DifficultyMode
+    fixed_difficulty: DifficultyLevel | null
 }
 
 export interface AnswerRequest {

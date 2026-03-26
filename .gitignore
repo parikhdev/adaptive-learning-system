@@ -33,3 +33,8 @@ ml_training/
 # OS
 .DS_Store
 Thumbs.db
+
+figures/
+results/
+stage1_benchmark.py
+stage2_simulation.py
