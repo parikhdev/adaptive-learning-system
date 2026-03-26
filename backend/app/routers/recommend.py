@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.ml import get_embedder
 from app.ml.difficulty import next_difficulty, DEFAULT_DIFFICULTY
+from app.db.connection import execute_query
 from app.db.vector_search import (
     cosine_search_questions,
     get_answered_question_ids,
@@ -32,11 +33,19 @@ def recommend_question(request: RecommendRequest) -> RecommendResponse:
     questions_answered: int       = context.get("total_questions", 0)
     last_difficulty:    str | None = context.get("last_difficulty")
 
+    # Step 2: Direct session row read for difficulty fields
+    rows = execute_query(
+        "SELECT difficulty_mode, fixed_difficulty FROM sessions WHERE id = %s",
+        (request.session_id,),
+    )
+    db_mode = rows[0].get("difficulty_mode") if rows else None
+    db_fd   = rows[0].get("fixed_difficulty") if rows else None
+
     # Final resolved values — request body takes priority over DB
     mode             = request.difficulty_mode  or db_mode or "adaptive"
     fixed_difficulty = request.fixed_difficulty or db_fd
 
-    # Step 2: Compute target difficulty
+    # Step 3: Compute target difficulty
     target_difficulty = next_difficulty(
         current_level=last_difficulty,
         questions_answered=questions_answered,
@@ -44,15 +53,15 @@ def recommend_question(request: RecommendRequest) -> RecommendResponse:
         fixed_difficulty=fixed_difficulty,
     )
 
-    # Step 3: Embed
+    # Step 4: Embed
     embedder     = get_embedder()
     query_text   = embedder.build_query(subject=request.subject, topic=request.topic)
     query_vector = embedder.encode(query_text)
 
-    # Step 4: Exclusion list 
+    # Step 5: Exclusion list 
     excluded_ids = get_answered_question_ids(request.session_id)
 
-    # Step 5: Vector search
+    # Step 6: Vector search
     candidates = cosine_search_questions(
         query_vector=query_vector,
         subject=request.subject,
