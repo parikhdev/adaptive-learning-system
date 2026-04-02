@@ -89,7 +89,6 @@ function parseOptions(text: string): {
     }
 
     // Pass 2: inline parsing — no lookbehind, manual split
-    // Find first A. or A) that starts an options block
     const inlinePattern = /\s([A-D])\s*[.)]\s*/g
     const matches: { index: number; key: string }[] = []
     let m: RegExpExecArray | null
@@ -123,7 +122,7 @@ function parseOptions(text: string): {
     }
 
     return { questionText: questionLines.join(" "), options }
-  }
+}
 
 interface Props {
     question: Question
@@ -145,14 +144,14 @@ export function QuestionCard({
     const hasOptions = validOptions.length >= 2
 
     return (
-        <Card className="w-full">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <Card className="w-full bg-white border-gray-200 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-100">
                 <div className="flex items-center gap-2 flex-wrap">
                     {question.topic && question.topic.toLowerCase() !== "general" && (
-                        <span className="text-sm text-slate-400">{question.topic}</span>
+                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{question.topic}</span>
                     )}
                     {question.subtopic && question.subtopic.toLowerCase() !== "general" && (
-                        <span className="text-sm text-slate-400">
+                        <span className="text-xs text-gray-400">
                             {question.topic && question.topic.toLowerCase() !== "general" && "→ "}
                             {question.subtopic}
                         </span>
@@ -161,37 +160,38 @@ export function QuestionCard({
                 <DifficultyBadge level={difficulty} />
             </CardHeader>
 
-            <CardContent className="space-y-5">
-                <p className="text-base leading-relaxed text-white">
+            <CardContent className="space-y-4 pt-4">
+                <p className="text-sm leading-relaxed text-gray-900">
                     <MathText text={questionText} />
                 </p>
 
                 {hasOptions ? (
-                    <div className="grid grid-cols-1 gap-3">
+                    <div className="grid grid-cols-1 gap-2">
                         {validOptions.map((opt) => (
                             <Button
                                 key={opt}
                                 variant="outline"
-                                className={`justify-start h-auto py-3 px-4 text-left whitespace-normal text-white transition-colors ${selectedAnswer === opt
-                                        ? "border-blue-500 bg-blue-500/20 hover:bg-blue-500/20"
-                                        : "border-slate-700 hover:border-slate-500 hover:bg-slate-800"
-                                    }`}
+                                className={`justify-start h-auto py-2.5 px-3.5 text-left whitespace-normal text-sm transition-all ${
+                                    selectedAnswer === opt
+                                        ? "border-indigo-500 bg-indigo-50 text-indigo-900 hover:bg-indigo-50"
+                                        : "border-gray-200 text-gray-800 hover:border-indigo-300 hover:bg-indigo-50 bg-white"
+                                }`}
                                 disabled={disabled}
                                 onClick={() => onAnswer(opt)}
                             >
-                                <span className="font-bold mr-3 shrink-0">{opt}.</span>
+                                <span className={`font-bold mr-3 shrink-0 text-xs ${selectedAnswer === opt ? "text-indigo-600" : "text-gray-400"}`}>{opt}.</span>
                                 <MathText text={options[opt]} />
                             </Button>
                         ))}
                     </div>
                 ) : (
-                    <div className="space-y-3 border border-slate-700 rounded-md p-4">
-                        <p className="text-sm text-slate-400 italic">
+                    <div className="space-y-3 border border-gray-200 rounded-lg p-4 bg-gray-50">
+                        <p className="text-xs text-gray-500 italic">
                             This question requires a written answer.
                         </p>
                         <Button
                             variant="outline"
-                            className="w-full border-slate-600 text-slate-300 hover:border-blue-500 hover:text-white"
+                            className="w-full border-gray-200 text-gray-600 hover:border-indigo-400 hover:text-indigo-700 bg-white text-sm"
                             disabled={disabled}
                             onClick={() => onAnswer("A")}
                         >
@@ -201,7 +201,7 @@ export function QuestionCard({
                 )}
 
                 {question.estimated_time && (
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-gray-400">
                         Estimated time: {Math.round(question.estimated_time / 60)} min
                     </p>
                 )}

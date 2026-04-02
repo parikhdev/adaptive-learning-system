@@ -47,8 +47,8 @@ export function StartSession({ studentId }: { studentId: string }) {
 
     return (
         <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-white">Start a Session</h2>
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            <h2 className="text-base font-semibold text-gray-900">Start a Session</h2>
+            {error && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">{error}</p>}
             <SubjectSelector onStart={handleStart} isLoading={isLoading} />
         </div>
     )

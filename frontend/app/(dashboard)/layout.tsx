@@ -14,19 +14,29 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <nav className="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
-        <span className="font-bold text-lg text-white">Adaptive Learning System</span>
+    <div className="min-h-screen bg-gray-50">
+      {/* Top navigation bar */}
+      <nav className="bg-white border-b border-gray-200 px-6 py-3.5 flex items-center justify-between sticky top-0 z-10">
+        <div className="flex items-center gap-2.5">
+          <div className="w-6 h-6 rounded bg-indigo-600 flex items-center justify-center">
+            <span className="text-white text-xs font-bold">A</span>
+          </div>
+          <span className="font-semibold text-sm text-gray-900 tracking-tight">
+            Adaptive Learning System
+          </span>
+        </div>
         <form action="/auth/signout" method="post">
           <button
             type="submit"
-            className="text-sm text-slate-400 hover:text-white transition-colors"
+            className="text-xs text-gray-500 hover:text-gray-900 transition-colors px-3 py-1.5 rounded-md hover:bg-gray-100"
           >
             Sign out
           </button>
         </form>
       </nav>
-      <main className="max-w-2xl mx-auto px-4 py-8">
+
+      {/* Page content */}
+      <main className="max-w-5xl mx-auto px-6 py-8">
         {children}
       </main>
     </div>

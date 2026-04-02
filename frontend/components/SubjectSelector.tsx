@@ -32,27 +32,48 @@ const TOPICS: Record<Subject, string[]> = {
 
 const SUBJECTS: Subject[] = ["Physics", "Chemistry", "Maths", "Biology"]
 
-const DIFFICULTY_LEVELS: { value: DifficultyLevel; label: string; color: string; bg: string; border: string }[] = [
+const SUBJECT_ICONS: Record<Subject, string> = {
+  Physics: "⚡",
+  Chemistry: "⚗️",
+  Maths: "∑",
+  Biology: "🧬",
+}
+
+const DIFFICULTY_LEVELS: {
+  value: DifficultyLevel
+  label: string
+  color: string
+  bg: string
+  border: string
+  selectedBorder: string
+  selectedBg: string
+}[] = [
   {
     value: "Beginner",
     label: "Beginner",
-    color: "text-green-400",
-    bg: "bg-green-500/10 hover:bg-green-500/20",
-    border: "border-green-500/40",
+    color: "text-emerald-700",
+    bg: "bg-emerald-50 hover:bg-emerald-100",
+    border: "border-emerald-200",
+    selectedBorder: "border-emerald-500",
+    selectedBg: "bg-emerald-50",
   },
   {
     value: "Intermediate",
     label: "Intermediate",
-    color: "text-yellow-400",
-    bg: "bg-yellow-500/10 hover:bg-yellow-500/20",
-    border: "border-yellow-500/40",
+    color: "text-amber-700",
+    bg: "bg-amber-50 hover:bg-amber-100",
+    border: "border-amber-200",
+    selectedBorder: "border-amber-500",
+    selectedBg: "bg-amber-50",
   },
   {
     value: "Advanced",
     label: "Advanced",
-    color: "text-red-400",
-    bg: "bg-red-500/10 hover:bg-red-500/20",
-    border: "border-red-500/40",
+    color: "text-red-700",
+    bg: "bg-red-50 hover:bg-red-100",
+    border: "border-red-200",
+    selectedBorder: "border-red-500",
+    selectedBg: "bg-red-50",
   },
 ]
 
@@ -68,7 +89,7 @@ interface Props {
   isLoading: boolean
 }
 
-// component 
+// component
 
 type Step = "subject" | "topic" | "difficulty"
 
@@ -109,19 +130,19 @@ export function SubjectSelector({ onStart, isLoading }: Props) {
   // breadcrumb
 
   const Breadcrumb = () => (
-    <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-4">
+    <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-4">
       <button
         onClick={() => setStep("subject")}
-        className={`hover:text-slate-300 transition-colors ${step === "subject" ? "text-slate-300 font-medium" : ""}`}
+        className={`hover:text-gray-700 transition-colors ${step === "subject" ? "text-gray-700 font-medium" : ""}`}
       >
         Subject
       </button>
       {step !== "subject" && (
         <>
-          <span>/</span>
+          <span className="text-gray-300">/</span>
           <button
             onClick={() => setStep("topic")}
-            className={`hover:text-slate-300 transition-colors ${step === "topic" ? "text-slate-300 font-medium" : ""}`}
+            className={`hover:text-gray-700 transition-colors ${step === "topic" ? "text-gray-700 font-medium" : ""}`}
           >
             {selectedSubject}
           </button>
@@ -129,12 +150,12 @@ export function SubjectSelector({ onStart, isLoading }: Props) {
       )}
       {step === "difficulty" && (
         <>
-          <span>/</span>
-          <span className="text-slate-300 font-medium">
+          <span className="text-gray-300">/</span>
+          <span className="text-gray-700 font-medium">
             {selectedTopic ?? "All Topics"}
           </span>
-          <span>/</span>
-          <span className="text-blue-400 font-medium">Difficulty</span>
+          <span className="text-gray-300">/</span>
+          <span className="text-indigo-600 font-medium">Difficulty</span>
         </>
       )}
     </div>
@@ -146,18 +167,18 @@ export function SubjectSelector({ onStart, isLoading }: Props) {
     return (
       <div className="space-y-3">
         <Breadcrumb />
-        <h3 className="text-sm font-medium text-slate-300">Select Subject</h3>
-        <div className="grid grid-cols-2 gap-3">
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Select Subject</p>
+        <div className="grid grid-cols-2 gap-2.5">
           {SUBJECTS.map((subject) => (
-            <Button
+            <button
               key={subject}
-              variant="outline"
-              className="h-16 text-base text-white border-slate-700 hover:border-blue-500 hover:bg-blue-500/10 bg-slateate-800"
+              className="h-16 flex flex-col items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white hover:border-indigo-400 hover:bg-indigo-50 text-gray-800 font-medium text-sm transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isLoading}
               onClick={() => handleSubject(subject)}
             >
-              {subject}
-            </Button>
+              <span className="text-lg">{SUBJECT_ICONS[subject]}</span>
+              <span className="text-xs font-semibold text-gray-700">{subject}</span>
+            </button>
           ))}
         </div>
       </div>
@@ -173,13 +194,13 @@ export function SubjectSelector({ onStart, isLoading }: Props) {
         <div className="flex items-center gap-3">
           <button
             onClick={goBack}
-            className="text-slate-400 hover:text-white text-sm transition-colors"
+            className="text-gray-400 hover:text-gray-700 text-sm transition-colors"
           >
             ← Back
           </button>
-          <h3 className="text-sm font-medium text-slate-300">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
             {selectedSubject} — Select Topic
-          </h3>
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
@@ -187,7 +208,7 @@ export function SubjectSelector({ onStart, isLoading }: Props) {
             <Button
               key={topic}
               variant="outline"
-              className="h-12 text-sm text-white border-slate-700 hover:border-blue-500 hover:bg-blue-500/10 text-left justify-start px-3"
+              className="h-10 text-xs text-gray-700 border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-700 text-left justify-start px-3 bg-white"
               disabled={isLoading}
               onClick={() => handleTopic(topic)}
             >
@@ -198,7 +219,7 @@ export function SubjectSelector({ onStart, isLoading }: Props) {
 
         <Button
           variant="ghost"
-          className="w-full text-slate-400 hover:text-white border border-dashed border-slate-700 hover:border-slate-500"
+          className="w-full text-gray-400 hover:text-gray-700 border border-dashed border-gray-300 hover:border-gray-400 bg-transparent text-sm"
           disabled={isLoading}
           onClick={() => handleTopic(null)}
         >
@@ -208,7 +229,7 @@ export function SubjectSelector({ onStart, isLoading }: Props) {
     )
   }
 
-  // Step 3: Difficulty 
+  // Step 3: Difficulty
 
   return (
     <div className="space-y-5">
@@ -217,29 +238,28 @@ export function SubjectSelector({ onStart, isLoading }: Props) {
       <div className="flex items-center gap-3">
         <button
           onClick={goBack}
-          className="text-slate-400 hover:text-white text-sm transition-colors"
+          className="text-gray-400 hover:text-gray-700 text-sm transition-colors"
         >
           ← Back
         </button>
-        <h3 className="text-sm font-medium text-slate-300">
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
           Choose Difficulty
-        </h3>
+        </p>
       </div>
 
       {/* Difficulty level picker */}
       <div className="space-y-2">
-        <p className="text-xs text-slate-500 uppercase tracking-wider">Starting Difficulty</p>
+        <p className="text-xs text-gray-400 uppercase tracking-wider">Starting Level</p>
         <div className="grid grid-cols-3 gap-2">
           {DIFFICULTY_LEVELS.map((d) => (
             <button
               key={d.value}
               onClick={() => setSelectedDifficulty(d.value)}
               className={`
-                rounded-lg border py-3 text-sm font-semibold transition-all
-                ${d.bg} ${d.border} ${d.color}
+                rounded-lg border py-2.5 text-xs font-semibold transition-all
                 ${selectedDifficulty === d.value
-                  ? "ring-2 ring-offset-1 ring-offset-background ring-current scale-[1.03] shadow-md"
-                  : "opacity-70 hover:opacity-100"
+                  ? `${d.selectedBg} ${d.selectedBorder} ${d.color} ring-2 ring-offset-1 ring-current scale-[1.02] shadow-sm`
+                  : `${d.bg} ${d.border} ${d.color} opacity-70 hover:opacity-100`
                 }
               `}
             >
@@ -251,31 +271,31 @@ export function SubjectSelector({ onStart, isLoading }: Props) {
 
       {/* Mode toggle */}
       <div className="space-y-2">
-        <p className="text-xs text-slate-500 uppercase tracking-wider">Progression Mode</p>
+        <p className="text-xs text-gray-400 uppercase tracking-wider">Progression Mode</p>
         <div className="grid grid-cols-2 gap-2">
 
           {/* Adaptive card */}
           <button
             onClick={() => setDifficultyMode("adaptive")}
             className={`
-              relative rounded-xl border p-4 text-left transition-all
+              relative rounded-xl border p-3.5 text-left transition-all
               ${difficultyMode === "adaptive"
-                ? "border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/40"
-                : "border-slate-700 bg-slate-800/40 hover:border-slate-500"
+                ? "border-indigo-400 bg-indigo-50 ring-1 ring-indigo-300"
+                : "border-gray-200 bg-white hover:border-gray-300"
               }
             `}
           >
             {difficultyMode === "adaptive" && (
-              <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-blue-400" />
+              <span className="absolute top-2 right-2 h-1.5 w-1.5 rounded-full bg-indigo-500" />
             )}
-            <p className={`text-sm font-semibold mb-1 ${difficultyMode === "adaptive" ? "text-blue-400" : "text-slate-300"}`}>
+            <p className={`text-xs font-semibold mb-1 ${difficultyMode === "adaptive" ? "text-indigo-700" : "text-gray-700"}`}>
               Adaptive
             </p>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Starts at {selectedDifficulty}, then escalates every 3 questions solved.
+            <p className="text-[10px] text-gray-500 leading-relaxed">
+              Starts at {selectedDifficulty}, escalates every 3 correct answers.
             </p>
-            <p className="text-xs text-slate-600 mt-1.5 font-mono">
-              Beginner → Intermediate → Advanced
+            <p className={`text-[10px] mt-1.5 font-mono ${difficultyMode === "adaptive" ? "text-indigo-400" : "text-gray-300"}`}>
+              B → I → A
             </p>
           </button>
 
@@ -283,24 +303,24 @@ export function SubjectSelector({ onStart, isLoading }: Props) {
           <button
             onClick={() => setDifficultyMode("fixed")}
             className={`
-              relative rounded-xl border p-4 text-left transition-all
+              relative rounded-xl border p-3.5 text-left transition-all
               ${difficultyMode === "fixed"
-                ? "border-purple-500 bg-purple-500/10 ring-1 ring-purple-500/40"
-                : "border-slate-700 bg-slate-800/40 hover:border-slate-500"
+                ? "border-violet-400 bg-violet-50 ring-1 ring-violet-300"
+                : "border-gray-200 bg-white hover:border-gray-300"
               }
             `}
           >
             {difficultyMode === "fixed" && (
-              <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-purple-400" />
+              <span className="absolute top-2 right-2 h-1.5 w-1.5 rounded-full bg-violet-500" />
             )}
-            <p className={`text-sm font-semibold mb-1 ${difficultyMode === "fixed" ? "text-purple-400" : "text-slate-300"}`}>
+            <p className={`text-xs font-semibold mb-1 ${difficultyMode === "fixed" ? "text-violet-700" : "text-gray-700"}`}>
               Fixed
             </p>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Stay at <span className="font-medium text-slate-400">{selectedDifficulty}</span> for as long as you practice — no escalation.
+            <p className="text-[10px] text-gray-500 leading-relaxed">
+              Stays at <span className="font-medium text-gray-700">{selectedDifficulty}</span> — no escalation.
             </p>
-            <p className="text-xs text-slate-600 mt-1.5 font-mono">
-              {selectedDifficulty} → {selectedDifficulty} → {selectedDifficulty}
+            <p className={`text-[10px] mt-1.5 font-mono ${difficultyMode === "fixed" ? "text-violet-400" : "text-gray-300"}`}>
+              {selectedDifficulty[0]} → {selectedDifficulty[0]} → {selectedDifficulty[0]}
             </p>
           </button>
 
@@ -308,30 +328,25 @@ export function SubjectSelector({ onStart, isLoading }: Props) {
       </div>
 
       {/* Summary banner */}
-      <div className="rounded-lg bg-slate-800/60 border border-slate-700 px-4 py-3 text-xs text-slate-400 space-y-0.5">
-        <div className="flex justify-between">
-          <span className="text-slate-500">Subject</span>
-          <span className="text-white font-medium">{selectedSubject}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-slate-500">Topic</span>
-          <span className="text-white font-medium">{selectedTopic ?? "All Topics"}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-slate-500">Difficulty</span>
-          <span className="font-medium text-white">{selectedDifficulty}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-slate-500">Mode</span>
-          <span className={`font-medium ${difficultyMode === "adaptive" ? "text-blue-400" : "text-purple-400"}`}>
-            {difficultyMode === "adaptive" ? "Adaptive (escalates)" : "Fixed (stays at level)"}
-          </span>
-        </div>
+      <div className="rounded-lg bg-gray-50 border border-gray-200 px-3.5 py-3 text-xs text-gray-500 space-y-1.5">
+        {[
+          ["Subject", selectedSubject],
+          ["Topic", selectedTopic ?? "All Topics"],
+          ["Difficulty", selectedDifficulty],
+          ["Mode", difficultyMode === "adaptive" ? "Adaptive (escalates)" : "Fixed (stays at level)"],
+        ].map(([label, value]) => (
+          <div key={label} className="flex justify-between">
+            <span className="text-gray-400">{label}</span>
+            <span className={`font-medium ${label === "Mode" && difficultyMode === "adaptive" ? "text-indigo-600" : label === "Mode" ? "text-violet-600" : "text-gray-800"}`}>
+              {value}
+            </span>
+          </div>
+        ))}
       </div>
 
       {/* Start button */}
       <Button
-        className="w-full h-11 text-base font-semibold"
+        className="w-full h-10 text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white border-0"
         disabled={isLoading}
         onClick={handleStart}
       >

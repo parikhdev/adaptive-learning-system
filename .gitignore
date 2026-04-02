@@ -38,3 +38,6 @@ figures/
 results/
 stage1_benchmark.py
 stage2_simulation.py
+dev.md
+.gitignore
+DataBaseCode.txt

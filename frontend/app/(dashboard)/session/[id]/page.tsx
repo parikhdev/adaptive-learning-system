@@ -129,8 +129,8 @@ export default function SessionPage() {
     if (!storeRef.current.studentId || !storeRef.current.subject) {
         return (
             <div className="text-center py-20">
-                <p className="text-slate-400">Session not found.</p>
-                <a href="/" className="text-primary hover:underline text-sm">
+                <p className="text-gray-500 text-sm">Session not found.</p>
+                <a href="/" className="text-indigo-600 hover:underline text-sm mt-2 inline-block">
                     Return to dashboard
                 </a>
             </div>
@@ -138,16 +138,16 @@ export default function SessionPage() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-5">
             <SessionStats />
 
             {error && !currentQuestion && (
-                <p className="text-sm text-red-400">{error}</p>
+                <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">{error}</p>
             )}
 
             {isLoading && !currentQuestion && (
                 <div className="flex items-center justify-center py-20">
-                    <div className="h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                    <div className="h-7 w-7 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
                 </div>
             )}
 
@@ -169,7 +169,7 @@ export default function SessionPage() {
                         <div className="flex justify-end">
                             <button
                                 onClick={handleSkip}
-                                className="text-sm text-slate-500 hover:text-slate-300 transition-colors underline underline-offset-2"
+                                className="text-xs text-gray-400 hover:text-gray-700 transition-colors underline underline-offset-2"
                             >
                                 Skip this question →
                             </button>
