@@ -105,6 +105,8 @@ def get_session_context(session_id: str) -> dict[str, Any] | None:
             s.avg_difficulty,
             s.correct_answers,
             s.total_questions,
+            s.difficulty_mode,       
+            s.fixed_difficulty, 
             sr.is_correct AS last_correct,
             q.difficulty_level AS last_difficulty
         FROM sessions s

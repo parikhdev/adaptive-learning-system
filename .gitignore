@@ -33,8 +33,13 @@ ml_training/
 # OS
 .DS_Store
 Thumbs.db
-
-figures/
-results/
+/results
+/ProjectScreenshots
+ALS_v1_0_(Revised).pdf
+ieee_paper.md
+ieee_paper.tex
+research_paper_notes.txt
+dev.md
+DataBaseCode.txt
 stage1_benchmark.py
 stage2_simulation.py

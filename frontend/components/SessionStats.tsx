@@ -6,23 +6,24 @@ export function SessionStats() {
     const { totalQuestions, skippedQuestions, subject, currentDifficulty } =
         useSessionStore()
 
+    const stats = [
+        { value: totalQuestions, label: "Answered", color: "text-gray-900" },
+        { value: skippedQuestions, label: "Skipped", color: "text-amber-600" },
+        { value: subject, label: "Subject", color: "text-indigo-600" },
+        { value: currentDifficulty, label: "Level", color: "text-gray-900" },
+    ]
+
     return (
-        <div className="flex items-center justify-center gap-8 w-full py-2">
-            <div className="flex flex-col items-center">
-                <span className="text-3xl font-bold text-white">{totalQuestions}</span>
-                <span className="text-slate-400 text-xs mt-1">Answered</span>
-            </div>
-            <div className="flex flex-col items-center">
-                <span className="text-3xl font-bold text-yellow-400">{skippedQuestions}</span>
-                <span className="text-slate-400 text-xs mt-1">Skipped</span>
-            </div>
-            <div className="flex flex-col items-center">
-                <span className="text-3xl font-bold text-primary">{subject}</span>
-                <span className="text-slate-400 text-xs mt-1">Subject</span>
-            </div>
-            <div className="flex flex-col items-center">
-                <span className="text-3xl font-bold text-white">{currentDifficulty}</span>
-                <span className="text-slate-400 text-xs mt-1">Level</span>
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm px-6 py-4">
+            <div className="flex items-center justify-center gap-10">
+                {stats.map((stat) => (
+                    <div key={stat.label} className="flex flex-col items-center gap-0.5">
+                        <span className={`text-2xl font-bold tabular-nums ${stat.color}`}>
+                            {stat.value}
+                        </span>
+                        <span className="text-xs text-gray-400 font-medium">{stat.label}</span>
+                    </div>
+                ))}
             </div>
         </div>
     )

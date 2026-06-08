@@ -62,11 +62,11 @@ interface Props {
 export function ExplanationPanel({ explanation, isLoading, onNext }: Props) {
     if (isLoading) {
         return (
-            <Card className="w-full border-blue-500/30 bg-blue-500/5">
-                <CardContent className="pt-6">
+            <Card className="w-full border-indigo-200 bg-indigo-50 shadow-sm">
+                <CardContent className="pt-5">
                     <div className="flex items-center gap-3">
-                        <div className="h-4 w-4 rounded-full border-2 border-blue-400 border-t-transparent animate-spin" />
-                        <p className="text-sm text-slate-400">Loading concept explanation...</p>
+                        <div className="h-4 w-4 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+                        <p className="text-sm text-indigo-600">Generating concept explanation…</p>
                     </div>
                 </CardContent>
             </Card>
@@ -82,26 +82,30 @@ export function ExplanationPanel({ explanation, isLoading, onNext }: Props) {
         .filter(Boolean)
 
     return (
-        <Card className="w-full border-blue-500/30 bg-blue-500/5">
-            <CardHeader className="pb-3">
-                <CardTitle className="text-base text-blue-400 flex items-center gap-2">
+        <Card className="w-full border-indigo-200 bg-indigo-50 shadow-sm">
+            <CardHeader className="pb-3 border-b border-indigo-100">
+                <CardTitle className="text-sm text-indigo-700 flex items-center gap-2">
                     <span>📘</span>
                     <span>Concept Reinforcement</span>
                 </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="space-y-3">
+            <CardContent className="space-y-4 pt-4">
+                <div className="space-y-2.5">
                     {paragraphs.map((para, i) => (
-                        <p key={i} className="text-sm leading-relaxed text-slate-200">
+                        <p key={i} className="text-sm leading-relaxed text-gray-800">
                             <MathText text={para} />
                         </p>
                     ))}
                 </div>
-                <div className="flex items-center justify-between pt-2 border-t border-blue-500/20">
-                    <p className="text-xs text-slate-500">
+                <div className="flex items-center justify-between pt-3 border-t border-indigo-200">
+                    <p className="text-xs text-gray-400">
                         Based on {explanation.similar_questions_used} similar questions
                     </p>
-                    <Button onClick={onNext} size="sm">
+                    <Button
+                        onClick={onNext}
+                        size="sm"
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs border-0"
+                    >
                         Next Question →
                     </Button>
                 </div>
