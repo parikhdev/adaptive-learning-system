@@ -21,7 +21,7 @@ const PIPELINE_STEPS = [
     number: "02",
     title: "pgvector Retrieval",
     description:
-      "A pgvector HNSW index over 121,557 JEE/NEET questions in Supabase is searched using cosine similarity (<=>) to surface the most relevant candidates.",
+      "A pgvector HNSW index over 121,557 JEE/NEET questions in Supabase is searched using cosine similarity (<=>) to surface the most relevant candidates.", // We dropped HNSW Indexing due to Supabase Constraints
     icon: "⊗",
     color: "text-violet-600",
     bg: "bg-violet-50",
@@ -99,11 +99,10 @@ export function SystemInfoPanel() {
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-all capitalize ${
-              activeTab === tab
+            className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-all capitalize ${activeTab === tab
                 ? "bg-white text-gray-900 shadow-sm"
                 : "text-gray-500 hover:text-gray-700"
-            }`}
+              }`}
           >
             {tab === "pipeline" ? "How It Works" : tab === "difficulty" ? "Difficulty" : "About"}
           </button>
